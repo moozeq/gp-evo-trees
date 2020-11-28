@@ -40,7 +40,10 @@ if __name__ == '__main__':
 
     seqs_ids = {get_id(gene_name): get_loc(gene_name) for gene_name in genes_names}
 
-    seqs_files = [download_sequence(seq_id, loc, directory=f'{args.output}/fastas') for seq_id, loc in seqs_ids.items()]
+    seqs_files = [
+        download_sequence(seq_id, loc, directory=f'{args.output}/fastas', known_orgs=genes_names)
+        for seq_id, loc in seqs_ids.items()
+    ]
     recs = []
     for seq_f in seqs_files:
         recs += read_records(seq_f)

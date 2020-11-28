@@ -29,7 +29,7 @@ def is_transversion(n1: str, n2: str) -> bool:
     return n1 in transversions[n2]
 
 
-def download_sequence(seq_id: str, seq_range: (int, int) = None, directory: str = '', known_ids: dict = {}) -> str:
+def download_sequence(seq_id: str, seq_range: (int, int) = None, directory: str = '', known_orgs: dict = {}) -> str:
     """Download sequence by id"""
     directory = directory if directory.endswith('/') else f'{directory}/'
     seq_filename = f'{directory}{seq_id}.fasta'
@@ -59,12 +59,12 @@ def download_sequence(seq_id: str, seq_range: (int, int) = None, directory: str 
     if seq_range:
         start, stop = seq_range
         rec = rec[start:stop]
-        full_id = f'{rec.id}:{start}-{stop}'
+        full_id = f'{rec.id}:{start + 1}-{stop}'
     # replace spaces and get only first part of description (before ',')
     rec.id = rec.description.replace(' ', '_').split(',')[0]
     rec.description = ''
     # check if can swap all id to organism name
-    rec.id = known_ids.get(full_id, rec.id)
+    rec.id = known_orgs.get(full_id, rec.id).replace(' ', '_')
 
     SeqIO.write(rec, seq_filename, 'fasta')
     print(f'[+] Downloaded sequence stored at {seq_filename}')
