@@ -1,20 +1,31 @@
 # EvoTrees
 
-Plant phylogenetic trees based on specific genes
+Plant phylogenetic trees based on 16S for specified species, or blastp-ed HBA1 aa sequence from different species.
 
 # Requirements
 
-- [muscle](https://anaconda.org/bioconda/muscle)
-- [biopython](https://biopython.org/)
-- [RAxML](https://github.com/stamatak/standard-RAxML)
+- [muscle](https://anaconda.org/bioconda/muscle) (must be in ``$PATH`` as ``muscle``)
+- [RAxML](https://github.com/stamatak/standard-RAxML) (must be in ``$PATH`` as ``raxml``)
+- [ninja](http://nimbletwist.com/software/ninja/index.html) (must be in ``$PATH`` as ``ninja``)
+- [biopython](https://biopython.org/) (``pip3 install -r requirements.txt``)
 
 # Run
 
+## 16S based on defined species
+
 ```bash
-./phy.py demo/species.txt
+./phy.py 16S -f demo/species.txt -o 16S
 ```
 
-Trees, fastas and other data will be under directory `results` after execution.
+Data will be under directory `16S` after execution, where trees will be planted at `16S/trees`.
+
+## HBA1 blastp-ed, limited to 100 species
+
+```bash
+./phy.py HBA1 -l 100 -o HBA1
+```
+
+Data will be under directory `HBA1` after execution, where trees will be planted at `HBA1/trees`.
 
 # Compare trees
 
@@ -32,19 +43,23 @@ t2 = Tree(args.treefile2, format=1)
 
 ## Run
 
-``rf 1/RAxML_bestTree.results 2/RAxML_bestTree.results``
+```for tree in 16S/trees/*; do echo -n "$tree: "; rf species.nwk $tree; done```
 
-Robinson-Foulds distance should be displayed as single float.
+Where `species.nwk` is real tree. Robinson-Foulds distances should be displayed as floats next to trees names.
 
 # Example
 
 ```bash
 # plant trees
-./phy.py demo/species.txt
+./phy.py 16S -f demo/species.txt -o 16S
 
-# robinson-foulds distance
-rf demo/species.nwk results/RAxML_bestTree.results
-0.0
+# robinson-foulds distance from real tree
+for tree in 16S/trees/*; do echo -n "$tree: "; rf demo/species.nwk $tree; done
+
+# output
+16S/trees/tree_ml.nwk: 0.0
+16S/trees/tree_mp.nwk: 0.3333333333333333
+16S/trees/tree_nj.nwk: 0.16666666666666666
 ```
 
 <html>
@@ -54,7 +69,7 @@ rf demo/species.nwk results/RAxML_bestTree.results
         <p>
             <img src="demo/species_raxml_tree.png">
         </p>
-        <h4>Real tree from <a href="http://timetree.org/">TIMETREE</a></h4>
+        <h4>Real tree from <a href="http://timetree.org/" target="_blank">TIMETREE</a></h4>
         <p>
             <img src="demo/species_tree.png">
         </p>

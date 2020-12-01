@@ -1,3 +1,4 @@
+import re
 import subprocess
 from pathlib import Path
 from typing import List, Tuple
@@ -110,21 +111,81 @@ def retrieve_genes_data(id_list):
     return genes_anns
 
 
-def get_16SrRNA_gene_name(species: str):
-    cmd = f'"16S ribosomal RNA"[All Fields] AND "{species}"[porgn] AND ("source mitochondrion"[property] AND alive[prop])'
+def gene_to_accession(query: str):
+    """Based on provided search string, get gene number and translate it to NBCI accession number"""
     from Bio import Entrez
     Entrez.email = "A.N.Other@example.com"
-    handle = Entrez.esearch(db="gene", term=cmd, idtype="acc")
+    handle = Entrez.esearch(db="gene", term=query, idtype="acc")
     records = Entrez.read(handle)
     ids = records['IdList']
     anns = retrieve_genes_data(ids)
-    print(f'{species} = {ids}')
+    print(f'"{query}" = {ids}')
     if len(ids) == 1 and len(anns) == 1:
         gene_id, (loc_start, loc_stop) = anns[0]
         gene_name = f'{gene_id}:{loc_start}-{loc_stop}'
         return gene_name
     else:
         raise Exception('[-] Gene ID must be single and be annotated')
+
+
+def get_16S(species: str):
+    cmd = f'"16S ribosomal RNA"[All Fields] AND "{species}"[porgn] AND ("source mitochondrion"[property] AND alive[prop])'
+    return gene_to_accession(cmd)
+
+
+def get_gene_homologous(gene: str, output_dir: str, limit: int = 100):
+    from Bio import SeqIO
+    from Bio.Blast import NCBIWWW
+
+    path = Path(output_dir)
+    path.mkdir(exist_ok=True)
+
+    blast_results_filename = f'{output_dir}/results.xml'
+    if not Path(blast_results_filename).exists():
+        rec = next(SeqIO.parse(gene, 'fasta'))
+        print('[*] Blastp-ing HBA1, please wait...')
+        result_handle = NCBIWWW.qblast('blastp', 'nr', rec.seq, hitlist_size=1000)
+        with open(blast_results_filename, 'w') as save_file:
+            blast_results = result_handle.read()
+            save_file.write(blast_results)
+            print(f'[*] Blastp-ed, results at {blast_results_filename}')
+
+    from Bio import SearchIO
+    results = SearchIO.read(blast_results_filename, 'blast-xml')
+
+    Path(f'{output_dir}/fastas').mkdir(exist_ok=True)
+    organisms = set()
+    seqs_files = []
+
+    def good_org(org_str: str):
+        return (org_str and
+                org_str not in organisms and
+                org_str != 'synthetic construct' and
+                # 'bacter' not in org_str and  ### uncomment to exclude bacterias
+                'unclassified' not in org_str)
+
+    for hit in results.hits:
+        orgs = re.findall(r"\[([A-Za-z ]+)\]", hit.description)
+        org = orgs[0] if orgs else None
+        if not good_org(org):
+            continue
+        organisms.add(org)
+        rec = hit.hsps[0].hit
+        rec.description = ''
+        rec.id = org.replace(' ', '_')
+        print(f'{org} = {rec.id}')
+        seq_file = f'{output_dir}/fastas/{rec.id}.fasta'
+        SeqIO.write(rec, seq_file, 'fasta')
+        seqs_files.append(seq_file)
+
+        # limit species
+        if len(organisms) == limit:
+            break
+
+    with open(f'{output_dir}/species.txt', 'w') as f:
+        f.write('\n'.join(organisms))
+
+    return seqs_files
 
 
 def read_records(filename: str):
@@ -155,13 +216,22 @@ def align_records(filename: str, output: str):
     subprocess.run(str(cline).split())
 
 
-def make_trees(filename: str, output_dir: str):
+def make_RAxML_trees(filename: str, output_dir: str, sub_model: str = '') -> (str, str):
     """Calculate trees using RAxML, returns filenames for ML and parsimony trees"""
     path = Path(output_dir)
-    path.parent.mkdir(exist_ok=True)
-    cline = f'raxml -s {filename} -w {path.absolute()} -n results -m GTRCATIX -p 12345'
+    path.mkdir(exist_ok=True)
+    cline = f'raxml -s {filename} -w {path.absolute()} -n results -m {sub_model} -p 12345'
     subprocess.run(str(cline).split())
-    return f'{output_dir}/RAxML_bestTree', f'{output_dir}/RAxML_parsimonyTree'
+    return f'{output_dir}/RAxML_bestTree.results', f'{output_dir}/RAxML_parsimonyTree.results'
+
+
+def make_ninja_tree(filename: str, output_dir: str) -> str:
+    """Calculate neighbour-joining tree using ninja, returns filename for NJ tree"""
+    path = Path(output_dir)
+    path.mkdir(exist_ok=True)
+    cline = f'ninja --in {filename} --out {output_dir}/ninja_nj_tree.nwk'
+    subprocess.run(str(cline).split())
+    return f'{output_dir}/ninja_nj_tree.nwk'
 
 
 def plot(data_lists: List[List[int]], data_labels: List[str], /, *,
