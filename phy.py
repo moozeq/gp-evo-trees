@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import shutil
+import sys
+import glob
 from shutil import copy
 from pathlib import Path
 from typing import Optional, Tuple
@@ -54,9 +57,59 @@ def get_16S_genes(args):
     return seqs_files
 
 
+def build_ml_tree(fasta_file: str):
+    name = Path(fasta_file).name
+    name = name[:-len(".fasta")]
+    aligned_fasta = f'aligned_{name}.fasta'
+    output_dir = f'output_{name}'
+    ml_tree_fn = f'{name}.nwk'
+
+    if Path(f'ml-trees/{ml_tree_fn}').exists():
+        # print(f'[+] OK, saved tree: trees/{ml_tree}')
+        return
+
+    align_records(fasta_file, aligned_fasta)
+    tree_ml, tree_mp = make_RAxML_trees(aligned_fasta, output_dir, sub_model)
+    copy(Path(tree_ml), Path(f'ml-trees/{ml_tree_fn}'))
+    Path(aligned_fasta).unlink()
+    shutil.rmtree(output_dir)
+    # print(f'[+] OK, saved tree: trees/{ml_tree}')
+
+
+def build_nj_tree(fasta_file: str):
+    name = Path(fasta_file).name
+    name = name[:-len(".fasta")]
+    aligned_fasta = f'aligned_{name}.fasta'
+    output_dir = f'output_{name}'
+    nj_tree_fn = f'{name}.nwk'
+
+    if Path(f'nj-trees/{nj_tree_fn}').exists():
+        # print(f'[+] OK, saved tree: trees/{ml_tree}')
+        return
+
+    align_records(fasta_file, aligned_fasta)
+    tree_nj = make_ninja_tree(aligned_fasta, output_dir)
+    copy(Path(tree_nj), Path(f'nj-trees/{nj_tree_fn}'))
+    Path(aligned_fasta).unlink()
+    shutil.rmtree(output_dir)
+
+
+def change_names(files):
+    for f in files:
+        def change_id(rec):
+            rec.description = ''
+            rec.id = rec.id[:4]
+            return rec
+
+        recs = read_records(f)
+        recs = [change_id(rec) for rec in recs]
+        save_fasta_records(recs, f)
+    print('[+] Changed all names')
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Building evolutionary trees based on 16S rRNA or HBA1')
-    parser.add_argument('mode', type=str, choices=['16S', 'HBA1'], help='basis for building evolutionary tree')
+    parser.add_argument('mode', type=str, choices=['16S', 'HBA1', 'ml-tree', 'nj-tree', 'consensus'], help='basis for building evolutionary tree')
     parser.add_argument('-f', '--file', type=str, help='file with organisms names in case of 16S rRNA mode')
     parser.add_argument('-l', '--limit', type=int, default=100, help='limit organisms count for HBA1-based trees building')
     parser.add_argument('-o', '--output', type=str, default='results', help='output directory, default "results"')
@@ -68,6 +121,34 @@ if __name__ == '__main__':
     elif args.mode == 'HBA1':
         sequences_files = get_HBA1_genes(args)
         sub_model = 'PROTGAMMAGTR'
+    elif args.mode == 'ml-tree':
+        sub_model = 'PROTGAMMAGTR'
+        fastas = glob.glob(f'{args.file}/*')
+        # change_names(fastas)
+
+        Path('ml-trees/').mkdir(exist_ok=True)
+
+        from joblib import Parallel, delayed
+        Parallel(n_jobs=4)(delayed(build_ml_tree)(fasta) for fasta in fastas)
+        sys.exit(0)
+    elif args.mode == 'nj-tree':
+        # change_names(fastas)
+        fastas = glob.glob(f'{args.file}/*')
+
+        Path('nj-trees/').mkdir(exist_ok=True)
+
+        from joblib import Parallel, delayed
+        Parallel(n_jobs=4)(delayed(build_nj_tree)(fasta) for fasta in fastas)
+        sys.exit(0)
+    elif args.mode == 'consensus':
+        trees_files = glob.glob(f'{args.file}/*')
+        from Bio import Phylo
+        from Bio.Phylo.Consensus import majority_consensus
+        trees = [Phylo.read(tf, "newick") for tf in trees_files]
+        majority_tree = majority_consensus(trees)
+        Phylo.write(majority_tree, args.output, "newick")
+        Phylo.draw_ascii(majority_tree)
+        sys.exit(0)
     else:
         raise Exception('Wrong mode')
 
