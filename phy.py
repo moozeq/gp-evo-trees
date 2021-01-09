@@ -57,28 +57,37 @@ def get_16S_genes(args):
     return seqs_files
 
 
-def build_ml_tree(fasta_file: str):
+def get_name(fasta_file: str):
     name = Path(fasta_file).name
     name = name[:-len(".fasta")]
+    return name
+
+
+def align_fasta_file(fasta_file: str):
+    name = get_name(fasta_file)
+    aligned_fasta = f'aligned_{name}.fasta'
+    align_records(fasta_file, aligned_fasta)
+
+
+def build_ml_mp_tree(fasta_file: str):
+    name = get_name(fasta_file)
     aligned_fasta = f'aligned_{name}.fasta'
     output_dir = f'output_{name}'
-    ml_tree_fn = f'{name}.nwk'
+    ml_tree_fn = f'ml-{name}.nwk'
+    mp_tree_fn = f'mp-{name}.nwk'
 
-    if Path(f'ml-trees/{ml_tree_fn}').exists():
+    if Path(f'ml-trees/{ml_tree_fn}').exists() and Path(f'mp-trees/{mp_tree_fn}').exists():
         # print(f'[+] OK, saved tree: trees/{ml_tree}')
         return
 
-    align_records(fasta_file, aligned_fasta)
     tree_ml, tree_mp = make_RAxML_trees(aligned_fasta, output_dir, sub_model)
     copy(Path(tree_ml), Path(f'ml-trees/{ml_tree_fn}'))
-    Path(aligned_fasta).unlink()
-    shutil.rmtree(output_dir)
+    copy(Path(tree_mp), Path(f'mp-trees/{mp_tree_fn}'))
     # print(f'[+] OK, saved tree: trees/{ml_tree}')
 
 
 def build_nj_tree(fasta_file: str):
-    name = Path(fasta_file).name
-    name = name[:-len(".fasta")]
+    name = get_name(fasta_file)
     aligned_fasta = f'aligned_{name}.fasta'
     output_dir = f'output_{name}'
     nj_tree_fn = f'{name}.nwk'
@@ -87,9 +96,20 @@ def build_nj_tree(fasta_file: str):
         # print(f'[+] OK, saved tree: trees/{ml_tree}')
         return
 
-    align_records(fasta_file, aligned_fasta)
     tree_nj = make_ninja_tree(aligned_fasta, output_dir)
     copy(Path(tree_nj), Path(f'nj-trees/{nj_tree_fn}'))
+    # shutil.rmtree(output_dir)
+
+
+def build_all_trees(fasta_file: str):
+    name = get_name(fasta_file)
+    output_dir = f'output_{name}'
+
+    align_fasta_file(fasta_file)
+
+    build_nj_tree(fasta_file)
+    build_ml_mp_tree(fasta_file)
+
     Path(aligned_fasta).unlink()
     shutil.rmtree(output_dir)
 
@@ -109,11 +129,27 @@ def change_names(files):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Building evolutionary trees based on 16S rRNA or HBA1')
-    parser.add_argument('mode', type=str, choices=['16S', 'HBA1', 'ml-tree', 'nj-tree', 'consensus'], help='basis for building evolutionary tree')
+    parser.add_argument('mode', type=str, choices=['16S', 'HBA1', 'ml-mp-tree', 'nj-tree', 'all-tree', 'consensus'], help='evolutionary tree building mode')
     parser.add_argument('-f', '--file', type=str, help='file with organisms names in case of 16S rRNA mode')
-    parser.add_argument('-l', '--limit', type=int, default=100, help='limit organisms count for HBA1-based trees building')
+    parser.add_argument('-l', '--limit', type=int, help='limit organisms count for HBA1-based/(ml,mp,nj) trees building')
     parser.add_argument('-o', '--output', type=str, default='results', help='output directory, default "results"')
     args = parser.parse_args()
+
+    def calc_trees(build_fun):
+        fastas = glob.glob(f'{args.file}/*')
+        # change_names(fastas)  # use it to change names to proper ones for consensus
+
+        # limit if specified
+        if args.limit:
+            import random
+            fastas = random.sample(fastas, k=args.limit)
+
+        Path('ml-trees/').mkdir(exist_ok=True)
+        Path('mp-trees/').mkdir(exist_ok=True)
+        Path('nj-trees/').mkdir(exist_ok=True)
+
+        from joblib import Parallel, delayed
+        Parallel(n_jobs=4)(delayed(build_fun)(fasta) for fasta in fastas)
 
     if args.mode == '16S':
         sequences_files = get_16S_genes(args)
@@ -121,24 +157,16 @@ if __name__ == '__main__':
     elif args.mode == 'HBA1':
         sequences_files = get_HBA1_genes(args)
         sub_model = 'PROTGAMMAGTR'
-    elif args.mode == 'ml-tree':
+    elif args.mode == 'all-tree':
         sub_model = 'PROTGAMMAGTR'
-        fastas = glob.glob(f'{args.file}/*')
-        # change_names(fastas)
-
-        Path('ml-trees/').mkdir(exist_ok=True)
-
-        from joblib import Parallel, delayed
-        Parallel(n_jobs=4)(delayed(build_ml_tree)(fasta) for fasta in fastas)
+        calc_trees(build_all_trees)
+        sys.exit(0)
+    elif args.mode == 'ml-mp-tree':
+        sub_model = 'PROTGAMMAGTR'
+        calc_trees(build_ml_mp_tree)
         sys.exit(0)
     elif args.mode == 'nj-tree':
-        # change_names(fastas)
-        fastas = glob.glob(f'{args.file}/*')
-
-        Path('nj-trees/').mkdir(exist_ok=True)
-
-        from joblib import Parallel, delayed
-        Parallel(n_jobs=4)(delayed(build_nj_tree)(fasta) for fasta in fastas)
+        calc_trees(build_nj_tree)
         sys.exit(0)
     elif args.mode == 'consensus':
         trees_files = glob.glob(f'{args.file}/*')
