@@ -151,17 +151,18 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--output', type=str, default='results', help='output directory, default "results"')
     args = parser.parse_args()
 
-    def get_limited_valid_fastas(fastas, limit, genes_min=3, genes_max=30):
+    def get_limited_valid_fastas(fastas, limit):
         import random
-        random.seed(2137)
-        random.shuffle(fastas)
-        out = []
-        for f in fastas:
-            glen = len(read_records(f))
-            if genes_min <= glen < genes_max:
-                out.append(f)
-            if len(out) >= limit:
-                break
+        # random.seed(1337)
+        # random.shuffle(fastas)
+        # out = []
+        # for f in fastas:
+        #     glen = len(read_records(f))
+        #     if genes_min <= glen < genes_max:
+        #         out.append(f)
+        #     if len(out) >= limit:
+        #         break
+        out = random.sample(fastas, limit)
         return out
 
     def calc_trees(build_fun):
@@ -190,7 +191,7 @@ if __name__ == '__main__':
         sub_model = 'PROTGAMMAGTR'
     elif args.mode == 'nj-supertree':
         calc_trees(build_nj_tree)
-        make_clann_supertree('nj-trees', f'{args.output}/nj-supertree.nwk')
+        make_clann_supertree('nj-trees', f'{args.output}/njsupertree.nwk')
         sys.exit(0)
     elif args.mode == 'all-tree':
         sub_model = 'PROTGAMMAGTR'

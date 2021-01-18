@@ -236,13 +236,13 @@ def make_ninja_tree(filename: str, output_dir: str) -> str:
 
 def make_clann_supertree(trees_dir: str, output: str) -> str:
     """Make supertree using clann"""
-    merged_trees = 'all-trees.ph'
+    merged_trees = 'all_trees.ph'
     merge_trees_cline = f'for f in {trees_dir}/*; do sed \'/^$/d\' $f >> {merged_trees}; done'
     subprocess.run(str(merge_trees_cline).split())
 
-    with open('clann.cmds', 'w') as cmds:
+    with open('clann_cmds', 'w') as cmds:
         cmds.write(f'execute; alltrees create weight=equal savetrees={output}')
-    cline = f'clann -ln -c clann.cmds {merged_trees}'
+    cline = f'clann -ln -c clann_cmds {merged_trees}'
     subprocess.run(str(cline).split())
     return output
 
