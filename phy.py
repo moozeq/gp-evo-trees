@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 from seq_utils import (read_records, align_records, save_fasta_records, download_sequence,
-                       get_16S, get_gene_homologous, make_RAxML_trees, make_ninja_tree, )
+                       get_16S, get_gene_homologous, make_RAxML_trees, make_ninja_tree, make_clann_supertree, )
 
 
 def get_HBA1_genes(args):
@@ -66,7 +66,8 @@ def get_name(fasta_file: str):
 def align_fasta_file(fasta_file: str):
     name = get_name(fasta_file)
     aligned_fasta = f'aligned_{name}.fasta'
-    align_records(fasta_file, aligned_fasta)
+    if not Path(aligned_fasta).exists():
+        align_records(fasta_file, aligned_fasta)
 
 
 def build_ml_mp_tree(fasta_file: str):
@@ -105,12 +106,9 @@ def build_all_trees(fasta_file: str):
     name = get_name(fasta_file)
     output_dir = f'output_{name}'
 
-    align_fasta_file(fasta_file)
-
     build_nj_tree(fasta_file)
     build_ml_mp_tree(fasta_file)
 
-    Path(aligned_fasta).unlink()
     shutil.rmtree(output_dir)
 
 
@@ -127,28 +125,61 @@ def change_names(files):
     print('[+] Changed all names')
 
 
+def change_names_notung(files):
+    """Change fasta genes names for using with notung postfix"""
+    for f in files:
+        def change_id(rec):
+            rec.description = ''
+            org = rec.id[:4]
+            gene = rec.id[4:]
+            rec.id = f'{gene}_{org}'
+            return rec
+
+        recs = read_records(f)
+        recs = [change_id(rec) for rec in recs]
+        save_fasta_records(recs, f)
+    print('[+] Changed all names')
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Building evolutionary trees based on 16S rRNA or HBA1')
-    parser.add_argument('mode', type=str, choices=['16S', 'HBA1', 'ml-mp-tree', 'nj-tree', 'all-tree', 'consensus'], help='evolutionary tree building mode')
+    parser.add_argument('mode', type=str,
+                        choices=['16S', 'HBA1', 'ml-mp-tree', 'nj-tree', 'all-tree', 'consensus', 'nj-supertree'],
+                        help='evolutionary tree building mode')
     parser.add_argument('-f', '--file', type=str, help='file with organisms names in case of 16S rRNA mode')
     parser.add_argument('-l', '--limit', type=int, help='limit organisms count for HBA1-based/(ml,mp,nj) trees building')
     parser.add_argument('-o', '--output', type=str, default='results', help='output directory, default "results"')
     args = parser.parse_args()
 
+    def get_limited_valid_fastas(fastas, limit, genes_min=3, genes_max=30):
+        import random
+        random.seed(2137)
+        random.shuffle(fastas)
+        out = []
+        for f in fastas:
+            glen = len(read_records(f))
+            if genes_min <= glen < genes_max:
+                out.append(f)
+            if len(out) >= limit:
+                break
+        return out
+
     def calc_trees(build_fun):
         fastas = glob.glob(f'{args.file}/*')
-        # change_names(fastas)  # use it to change names to proper ones for consensus
+        # change_names(fastas); sys.exit(0)  # use it to change names to proper ones for consensus
+        # change_names_notung(fastas); sys.exit(0)  # use it to change names to proper ones for notung postfix
 
         # limit if specified
         if args.limit:
-            import random
-            fastas = random.sample(fastas, k=args.limit)
+            fastas = get_limited_valid_fastas(fastas, args.limit)
 
         Path('ml-trees/').mkdir(exist_ok=True)
         Path('mp-trees/').mkdir(exist_ok=True)
         Path('nj-trees/').mkdir(exist_ok=True)
 
         from joblib import Parallel, delayed
+        Parallel(n_jobs=4)(delayed(align_fasta_file)(fasta) for fasta in fastas)
+        print('[+] Aligned all data')
         Parallel(n_jobs=4)(delayed(build_fun)(fasta) for fasta in fastas)
 
     if args.mode == '16S':
@@ -157,6 +188,10 @@ if __name__ == '__main__':
     elif args.mode == 'HBA1':
         sequences_files = get_HBA1_genes(args)
         sub_model = 'PROTGAMMAGTR'
+    elif args.mode == 'nj-supertree':
+        calc_trees(build_nj_tree)
+        make_clann_supertree('nj-trees', f'{args.output}/nj-supertree.nwk')
+        sys.exit(0)
     elif args.mode == 'all-tree':
         sub_model = 'PROTGAMMAGTR'
         calc_trees(build_all_trees)
