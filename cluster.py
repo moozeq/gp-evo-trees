@@ -2,26 +2,16 @@
 import random
 import time
 import subprocess
+from collections import defaultdict
 from pathlib import Path
 
 import prody
 
+from seq_utils import read_records, save_fasta_records
+
 
 def download_family(name: str) -> str:
     return prody.fetchPfamMSA(name, format='fasta', outname=f'fs/{name}.fasta', timeout=10)
-
-
-def read_records(filename: str):
-    """Get records from file as Seqs objects"""
-    from Bio import SeqIO
-    seqs = [record for record in SeqIO.parse(filename, 'fasta')]
-    return seqs
-
-
-def save_fasta_records(recs, filename):
-    """Save records as single fasta"""
-    from Bio import SeqIO
-    SeqIO.write(recs, filename, 'fasta')
 
 
 def get_pfam_100_families():
@@ -57,12 +47,10 @@ def mmseqs2(file):
     if not Path('../lab6/mmseqs2_cluster.tsv').exists():
         subprocess.run('mmseqs easy-cluster merged.fasta mmseqs2 tmp'.split())  # mmseqs2_cluster.tsv
 
-    clusters = {}
+    clusters = defaultdict(list)
     with open(file) as f:
         for line in f:
             cat, g = line.strip().split('\t')
-            if cat not in clusters:
-                clusters[cat] = []
             clusters[cat].append(g)
 
     return clusters

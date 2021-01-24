@@ -1,5 +1,6 @@
 import re
 import subprocess
+from collections import defaultdict
 from pathlib import Path
 from typing import List, Tuple
 
@@ -191,16 +192,21 @@ def get_gene_homologous(gene: str, output_dir: str, limit: int = 100):
 def read_records(filename: str):
     """Get records from file as Seqs objects"""
     from Bio import SeqIO
-    print(f'[*] Reading sequences from {filename}')
     seqs = [record for record in SeqIO.parse(filename, 'fasta')]
-    print(f'[+] Read {len(seqs)} sequences')
     return seqs
+
+
+def count_records(filename: str):
+    """Count how many records in fasta file"""
+    from Bio import SeqIO
+    return sum(True for _ in SeqIO.parse(filename, 'fasta'))
 
 
 def save_fasta_records(recs, filename):
     """Save records as single fasta"""
     from Bio import SeqIO
     SeqIO.write(recs, filename, 'fasta')
+    return filename
 
 
 def read_sequences(filename: str) -> List[str]:
@@ -214,6 +220,23 @@ def align_records(filename: str, output: str):
     from Bio.Align.Applications import MuscleCommandline
     cline = MuscleCommandline(input=filename, out=output)
     subprocess.run(str(cline).split())
+
+
+def mmseqs2(merged_fasta: str, out: str):
+    if not Path((cluster_file := f'{out}/_all_seqs.fasta')).exists():
+        subprocess.run(f'mmseqs easy-cluster {merged_fasta} mmseqs2 {out}'.split())
+        Path('mmseqs2_all_seqs.fasta').replace(cluster_file)
+        Path('mmseqs2_cluster.tsv').replace(f'{out}/_cluster.tsv')
+        Path('mmseqs2_rep_seq.fasta').replace(f'{out}/_rep_seq.fasta')
+
+    # def get_clusters():
+    #     clusters = defaultdict(list)
+    #     with open(f'{out}/_cluster.tsv') as f:
+    #         for line in f:
+    #             cat, g = line.strip().split('\t')
+    #             clusters[cat].append(g)
+
+    return cluster_file
 
 
 def make_RAxML_trees(filename: str, output_dir: str, sub_model: str = '') -> (str, str):

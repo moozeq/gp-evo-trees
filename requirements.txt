@@ -1,2 +1,4 @@
 biopython
 prody
+requests
+joblib
