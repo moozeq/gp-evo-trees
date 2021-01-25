@@ -2,18 +2,10 @@
 
 # Setup Ubuntu
 apt-get update && apt-get upgrade -y && apt-get install -y wget git gcc make tar build-essential libreadline-dev autotools-dev automake
-
-# Get Miniconda and make it the main Python interpreter
-wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /miniconda.sh
-chmod +x /miniconda.sh
-/miniconda.sh -b -p /miniconda
-rm /miniconda.sh
-
-# install packages
-/miniconda/bin/conda install -c bioconda -c conda-forge -c etetoolkit -c anaconda --file requirements.txt
+cd /
 
 # install clann
-git clone -c http.postBuffer=2147483648 https://github.com/moozeq/clann.git
+git clone https://github.com/moozeq/clann.git
 cd clann
 ./configure
 #make
@@ -37,3 +29,12 @@ curl http://nimbletwist.com/software/ninja/files/ninja.tgz > ninja.tgz
 tar -xvf ninja.tgz
 mv ninja_*/ninja /bin/ninja
 mv ninja_*/Ninja.jar /bin/Ninja.jar
+
+# Get Miniconda and make it the main Python interpreter
+wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /miniconda.sh
+chmod +x /miniconda.sh
+/miniconda.sh -b -p /miniconda
+rm /miniconda.sh
+
+# install packages
+/miniconda/bin/conda install -c bioconda -c conda-forge -c etetoolkit -c anaconda --file requirements.txt
