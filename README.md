@@ -10,12 +10,12 @@ genomes by clustering, inferring gene families and their trees.
 docker build -t evopipe github.com/moozeq/GP_EvoTrees#pipeline
 
 # run for species from file analysis (see example below)
-docker run --name evopipe_container \
+docker run --name evopipe_file \
            -v $PWD:/evopipe \
            -t evopipe file species.json
 
 # run for family analysis (see example below)
-docker run --name evopipe_container \
+docker run --name evopipe_family \
            -v $PWD:/evopipe \
            -t evopipe family Coronaviridae
 ```
@@ -41,7 +41,7 @@ $ head species.json
 
 Run pipeline with:
 ```bash
-docker run --name evopipe_container \
+docker run --name evopipe_file \
            -v $PWD:/evopipe \
            -t evopipe file species.json -o coronaviruses
 ```
@@ -57,7 +57,7 @@ Providing family name, proteomes (each for one organism) will be downloaded
 Run pipeline with:
 ```bash
 # run for family analysis
-docker run --name evopipe_container \
+docker run --name evopipe_family \
            -v $PWD:/evopipe \
            -t evopipe family Coronaviridae -n 100
 ```
