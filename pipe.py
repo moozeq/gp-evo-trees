@@ -204,9 +204,9 @@ class Tools:
         """Cluster sequences in one, merged FASTA file using mmseqs2."""
         if not Path((cluster_file := f'{out}/_all_seqs.fasta')).exists():
             subprocess.run(f'mmseqs easy-cluster {merged_fasta} mmseqs2 {out}'.split())
-            shutil.copy('mmseqs2_all_seqs.fasta', cluster_file)
-            shutil.copy('mmseqs2_cluster.tsv', f'{out}/_cluster.tsv')
-            shutil.copy('mmseqs2_rep_seq.fasta', f'{out}/_rep_seq.fasta')
+            shutil.move('mmseqs2_all_seqs.fasta', cluster_file)
+            shutil.move('mmseqs2_cluster.tsv', f'{out}/_cluster.tsv')
+            shutil.move('mmseqs2_rep_seq.fasta', f'{out}/_rep_seq.fasta')
 
         return cluster_file
 
@@ -640,15 +640,15 @@ def build_trees(aligned_fastas: List[str], out: str, super_search: bool = False)
         Path(nj_trees_dir).mkdir(exist_ok=True)
         for nj_tree in nj_trees:
             family = Path(nj_tree).name
-            shutil.copy(nj_tree, f'{nj_trees_dir}/{family}.nwk')
+            shutil.move(nj_tree, f'{nj_trees_dir}/{family}.nwk')
 
     def move_raxml_trees(raxml_trees: List[Tuple[str, str, str]]):
         """Move output trees from RAxML to proper directories (MP and ML trees)."""
         Path(ml_trees_dir).mkdir(exist_ok=True)
         Path(mp_trees_dir).mkdir(exist_ok=True)
         for ml_tree, mp_tree, family in raxml_trees:
-            shutil.copy(ml_tree, f'{ml_trees_dir}/{family}.nwk')
-            shutil.copy(mp_tree, f'{mp_trees_dir}/{family}.nwk')
+            shutil.move(ml_tree, f'{ml_trees_dir}/{family}.nwk')
+            shutil.move(mp_tree, f'{mp_trees_dir}/{family}.nwk')
 
     def make_ninja_trees():
         """Make NJ trees using ninja.
