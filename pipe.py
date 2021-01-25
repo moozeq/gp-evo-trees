@@ -20,33 +20,37 @@ from joblib import Parallel, delayed
 
 
 class RecUtils:
+    """Utilities for operations on FASTA records, species names etc."""
+
     @staticmethod
     def read_records(filename: str):
-        """Get records from file as Seqs objects"""
+        """Get records from file as Seqs objects."""
         from Bio import SeqIO
         seqs = [record for record in SeqIO.parse(filename, 'fasta')]
         return seqs
 
     @staticmethod
     def save_fasta_records(recs, filename):
-        """Save records as single fasta"""
+        """Save records as single fasta."""
         from Bio import SeqIO
         SeqIO.write(recs, filename, 'fasta')
         return filename
 
     @staticmethod
     def count_records(filename: str):
-        """Count how many records in fasta file"""
+        """Count how many records in fasta file."""
         from Bio import SeqIO
         return sum(True for _ in SeqIO.parse(filename, 'fasta'))
 
     @staticmethod
     def load_species(filename: str) -> List[str]:
+        """Load species from json file."""
         with open(filename) as f:
             return json.load(f)
 
     @staticmethod
     def normalize_species(sp: str) -> str:
+        """Change species name, removing characters which may cause issues in pipeline."""
         not_valid = [' ', '-', '/', '(', ')', '#', ':', ',', ';', '[', ']', '\'', '"', '___', '__']
         for ch in not_valid:
             sp = sp.replace(ch, '_')
@@ -54,13 +58,22 @@ class RecUtils:
 
     @staticmethod
     def generate_ids():
+        """Generate inner IDs using for species while building trees.
+
+        For each species generate its inner IDs used when building trees to omit errors connected
+        with species names. Generated IDs are in format as presented below:
+
+            'A', 'B', 'C', ..., 'Z', 'AA', 'AB', ...
+        """
         for size in itertools.count(1):
             for s in itertools.product(ascii_lowercase, repeat=size):
                 yield ''.join(s).upper()
 
     @staticmethod
     def retrieve_species_names(tree_file, sp_map: Dict[str, str], out: str, rm_zero_lengths: bool = False) -> str:
+        """Replace inner IDs for species with their real names."""
         def remove_zero_lengths(tree_f):
+            """For super trees remove zero-length branches to avoid issues with displaying trees."""
             with open(tree_f) as f:
                 tree_str = f.read()
             tree_str = tree_str.replace(':0.00000', '')
@@ -84,9 +97,11 @@ class RecUtils:
 
 
 class Tools:
+    """External tools, mostly using subprocess.run() to be executed."""
+
     @staticmethod
     def make_RAxML_trees(aligned_fasta: str, output_dir: str, sub_model: str = 'PROTGAMMAGTR') -> (str, str):
-        """Calculate trees using RAxML, returns filenames for ML and parsimony trees"""
+        """Calculate trees using RAxML, returns filenames for ML and parsimony trees."""
         name = Path(aligned_fasta).name[:-len('.fasta')]
         output_dir = f'{output_dir}/{name}'
         (path := Path(output_dir)).mkdir(exist_ok=True)
@@ -107,7 +122,7 @@ class Tools:
 
     @staticmethod
     def make_ninja_tree(aligned_fasta: str, output_dir: str) -> str:
-        """Calculate neighbour-joining tree using ninja, returns filename for NJ tree"""
+        """Calculate neighbour-joining tree using ninja, returns filename for NJ tree."""
         name = Path(aligned_fasta).name[:-len('.fasta')]
         nj_tree_nwk = f'{output_dir}/{name}'
 
@@ -125,7 +140,7 @@ class Tools:
 
     @staticmethod
     def make_clann_super_tree(trees_dir: str, out_tree_nwk: str) -> str:
-        """Make supertree using clann"""
+        """Make supertree using clann."""
         if Path(out_tree_nwk).exists():
             return out_tree_nwk
 
@@ -143,7 +158,7 @@ class Tools:
             with open(cmds_file, 'w') as cmds:
                 cmds.write(f'execute; hs swap=spr maxswaps=10000 nreps=3 weight=equal savetrees={out_tree_nwk}')
 
-            cline = f'clann -ln -c {cmds_file} {merged_trees}'
+            cline = f'clann -n -c {cmds_file} {merged_trees}'
             subprocess.run(str(cline).split(), check=True)
             return out_tree_nwk
         except subprocess.CalledProcessError as e:
@@ -152,7 +167,7 @@ class Tools:
 
     @staticmethod
     def make_phylo_consensus_tree(trees_dir: str, out_tree_nwk: str) -> str:
-        """Make consensus tree using biopython phylo package"""
+        """Make consensus tree using biopython phylo package."""
         if Path(out_tree_nwk).exists():
             return out_tree_nwk
 
@@ -168,6 +183,7 @@ class Tools:
 
     @staticmethod
     def mmseqs2(merged_fasta: str, out: str):
+        """Cluster sequences in one, merged FASTA file using mmseqs2."""
         if not Path((cluster_file := f'{out}/_all_seqs.fasta')).exists():
             subprocess.run(f'mmseqs easy-cluster {merged_fasta} mmseqs2 {out}'.split())
             Path('mmseqs2_all_seqs.fasta').replace(cluster_file)
@@ -178,8 +194,11 @@ class Tools:
 
 
 class Uniprot:
+    """Functions calling Uniprot API to retrieve proteomes or their IDs."""
+
     @staticmethod
     def get_proteome_id_by_organism(organism: str) -> str:
+        """Get ID of best proteome for specified organism."""
         query = f'query=organism:{organism}&format=list&sort=score'
         url = f'https://www.uniprot.org/proteomes/?{query}'
         try:
@@ -197,26 +216,28 @@ class Uniprot:
             return ''
 
     @staticmethod
-    def download_proteomes_ids(f: str, o: str) -> str:
-        query = f'query=taxonomy:{f}&format=tab&sort=score'
+    def download_proteomes_ids(tax: str, out: str) -> str:
+        """Download all proteomes IDs for specific tax family."""
+        query = f'query=taxonomy:{tax}&format=tab&sort=score'
         url = f'https://www.uniprot.org/proteomes/?{query}'
         try:
-            if Path(o).exists():
-                return o
+            if Path(out).exists():
+                return out
             ids = requests.get(url)
             ids = ids.content.decode()
             if not ids:
                 raise Exception('empty list')
             logging.info(f'Downloaded proteomes IDs list: {len(ids.splitlines()) - 1}')
-            with open(o, 'w') as fp:
+            with open(out, 'w') as fp:
                 fp.write(ids)
-            return o
+            return out
         except Exception as e:
-            logging.error(f'Could not download proteomes IDs list for: {f}, error = {str(e)}')
+            logging.error(f'Could not download proteomes IDs list for: {tax}, error = {str(e)}')
             return ''
 
     @staticmethod
     def download_proteome(pid: str, org: str, o_dir: str):
+        """Download proteome using proteome Uniprot ID."""
         query = f'query=proteome:{pid}&format=fasta&compress=no'
         url = f'https://www.uniprot.org/uniprot/?{query}'
         try:
@@ -235,60 +256,14 @@ class Uniprot:
             return ''
 
 
-def download_proteomes_ete3(all_species: List[str], out: str):
-    def get_tax_id(s: str) -> str:
-        def get_tax_id_from_ete3(ete3_out: str) -> str:
-            first_line = ete3_out.splitlines()[1]  # omit header
-            ete3_tid = first_line.split('\t')[0]  # tax id is first
-            return ete3_tid
-
-        ete_cmd = ['ete3', 'ncbiquery', '--info', '--search']
-        try:
-            ete_s_cmd = ete_cmd + [s]
-            ete_out = subprocess.run(ete_s_cmd, check=True, capture_output=True)
-            ete3_tax_id = get_tax_id_from_ete3(ete_out.stdout.decode())
-            logging.info(f'Translated: {s} -> {ete3_tax_id}')
-            return ete3_tax_id
-        except subprocess.CalledProcessError:
-            logging.error(f'Could not translate to tax ID: {s}')
-            return ''
-
-    if not Path((trans_tax := f'{out}/_transtax.json')).exists():
-        proteomes_taxids = {
-            RecUtils.normalize_species(species): tax_id
-            for species in all_species
-            if (tax_id := get_tax_id(species))
-        }
-        logging.info(f'Translated names to tax IDs: {len(proteomes_taxids)}/{len(all_species)}')
-        with open(trans_tax, 'w') as f:
-            json.dump(proteomes_taxids, f, indent=4)
-    else:
-        with open(trans_tax) as f:
-            proteomes_taxids = json.load(f)
-
-    proteomes_filenames = [
-        proteome_filename
-        for species, tax_id in proteomes_taxids.items()
-        if (proteome_filename := Uniprot.download_proteome(tax_id, f'{out}/{RecUtils.normalize_species(species)}.fasta'))
-    ]
-
-    valid_files = [
-        file
-        for file in proteomes_filenames
-        if Path(file) and RecUtils.count_records(file)
-    ]
-
-    logging.info(f'Downloaded proteomes: {len(valid_files)}/{len(all_species)}')
-    return proteomes_filenames
-
-
-def download_proteomes_by_names(names: List[str], out: str, limit: int = 100000) -> List[str]:
-    Path(out).mkdir(exist_ok=True)
+def download_proteomes_by_names(names: List[str], fastas_out: str, limit: int = 100000) -> List[str]:
+    """Providing list of organisms names, try to download proteomes with max limit."""
+    Path(fastas_out).mkdir(exist_ok=True)
     pids = {
         pid: org
         for org in names
         if (
-            not Path(f'{out}/{RecUtils.normalize_species(org)}.fasta').exists() and
+            not Path(f'{fastas_out}/{RecUtils.normalize_species(org)}.fasta').exists() and
             (pid := Uniprot.get_proteome_id_by_organism(org))
         )
     }
@@ -296,7 +271,7 @@ def download_proteomes_by_names(names: List[str], out: str, limit: int = 100000)
     proteomes_files = {
         org: str(prot_file)
         for org in names
-        if (prot_file := Path(f'{out}/{RecUtils.normalize_species(org)}.fasta')).exists()
+        if (prot_file := Path(f'{fastas_out}/{RecUtils.normalize_species(org)}.fasta')).exists()
     }
 
     if not pids and not proteomes_files:
@@ -307,7 +282,7 @@ def download_proteomes_by_names(names: List[str], out: str, limit: int = 100000)
         if (
             len(proteomes_files) < limit and
             org not in proteomes_files and
-            (prot_file := Uniprot.download_proteome(pid, org, out))
+            (prot_file := Uniprot.download_proteome(pid, org, fastas_out))
         ):
             proteomes_files[org] = prot_file
 
@@ -315,9 +290,10 @@ def download_proteomes_by_names(names: List[str], out: str, limit: int = 100000)
     return list(proteomes_files.values())
 
 
-def download_proteomes_by_family(family: str, out: str, limit: int = 100000) -> List[str]:
-    ids_file = Uniprot.download_proteomes_ids(family, f'{out}/_ids.tsv')
-    Path(out).mkdir(exist_ok=True)
+def download_proteomes_by_family(family: str, fastas_out: str, limit: int = 100000) -> List[str]:
+    """Providing taxonomy family name, try to download proteomes from it with max limit."""
+    ids_file = Uniprot.download_proteomes_ids(family, f'{fastas_out}/_ids.tsv')
+    Path(fastas_out).mkdir(exist_ok=True)
     proteomes_files = {}
     with open(ids_file) as ifp:
         reader = iter(ifp)
@@ -327,27 +303,29 @@ def download_proteomes_by_family(family: str, out: str, limit: int = 100000) -> 
             if (
                 len(proteomes_files) < limit and
                 org not in proteomes_files and
-                (prot_file := Uniprot.download_proteome(pid, org, out))
+                (prot_file := Uniprot.download_proteome(pid, org, fastas_out))
             ):
                 proteomes_files[org] = prot_file
 
     logging.info(f'Downloaded proteomes for: {len(proteomes_files)}/{i}')
-    Path(ids_file).unlink(missing_ok=True)  # remove file after
+    Path(ids_file).unlink(missing_ok=True)  # remove downloaded file with IDs after work
     return list(proteomes_files.values())
 
 
-def download_proteomes(mode: str, input: str, out: str, limit: int = 100000) -> List[str]:
+def download_proteomes(mode: str, input: str, fastas_out: str, limit: int = 100000) -> List[str]:
+    """Base on mode, set proper proteomes downloading option: by family or by file."""
     if mode == 'family':
-        return download_proteomes_by_family(input, out, limit)
+        return download_proteomes_by_family(input, fastas_out, limit)
     elif mode == 'file':
         with open(input) as f:
             organisms = json.load(f)
-        return download_proteomes_by_names(organisms, out, limit)
+        return download_proteomes_by_names(organisms, fastas_out, limit)
     else:
         raise Exception(f'Wrong mode: mode = {mode}, input = {input}')
 
 
 def filter_fastas(fastas: List[str], min_seqs: int = 0, max_seqs: int = 100000) -> List[str]:
+    """Simple fasta filtering, all fastas without meeting requirements will be excluded."""
     if min_seqs == 0 and max_seqs == -1:
         return fastas
     filtered_fastas = [
@@ -360,6 +338,7 @@ def filter_fastas(fastas: List[str], min_seqs: int = 0, max_seqs: int = 100000) 
 
 
 def map_recs_to_species(fastas: List[str], out: str) -> (Dict[str, str], Dict[str, str]):
+    """Create mapping for record IDs to species names and their inner IDs created with `RecUtils.generate_ids()`."""
     if Path(out).exists():
         with open(out) as f:
             maps = json.load(f)
@@ -391,6 +370,7 @@ def map_recs_to_species(fastas: List[str], out: str) -> (Dict[str, str], Dict[st
 
 
 def merge_fastas(fastas: List[str], out: str) -> str:
+    """Simply merging all fasta files into one big FASTA."""
     if Path(out).exists():
         return out
     recs = [
@@ -406,14 +386,18 @@ def merge_fastas(fastas: List[str], out: str) -> str:
 def clustering(merged_fasta: str,
                out: str,
                min_len: int,
+               highest: int,
                duplications: bool,
                recs_map: Dict[str, str]) -> Dict[str, list]:
+    """Cluster merged fasta file (proteomes) to proteins families."""
     def rename_fasta_record(seq: SeqRecord, name: str):
+        """Set inner ID as sequence ID."""
         seq.description = ''
         seq.id = name
         return seq
 
     def get_clusters(f: str) -> Dict[str, List[SeqRecord]]:
+        """Based on output from mmseqs2, get clusters as dict."""
         recs = iter(RecUtils.read_records(f))
         # order is important!
         unfiltered_clusters = defaultdict(list)
@@ -429,8 +413,10 @@ def clustering(merged_fasta: str,
 
         return unfiltered_clusters
 
-    def filter_clusters(cls: Dict[str, List[SeqRecord]], lim: int, dup: bool) -> Dict[str, list]:
+    def filter_clusters(cls: Dict[str, List[SeqRecord]], lim: int, hg: int, dup: bool) -> Dict[str, list]:
+        """Filter out clusters with min length (lim), first highest (hg), duplications allowance (dup)."""
         def filter_corr(cls_recs):
+            """Filter correspondence, if dup == True, it means allow duplications (paralogs) in clusters."""
             if dup:
                 return cls_recs
             # remove duplicates, one-to-one correspondence
@@ -443,27 +429,41 @@ def clustering(merged_fasta: str,
                 ids.add(cls_rec.id)
             return corr_cls_recs
 
+        def filter_highest(cls_recs, hg_filter: int):
+            """Get only first n most populated clusters."""
+            if hg_filter:
+                clusters_from_highest = sorted(cls_recs, key=lambda k: len(cls_recs[k]), reverse=True)
+                hg_lim = hg if hg < len(clusters_from_highest) else len(clusters_from_highest)
+                cls_recs = {k: cls_recs[k] for k in clusters_from_highest[:hg_lim]}
+            return cls_recs
+
         unfiltered_records_cnt = sum(len(fc) for fc in cls.values())
+
+        # filter out clusters without meeting minimum len
         filtered_clusters = {
             cluster_name: f_cluster_recs
             for cluster_name, cluster_recs in cls.items()
             if len(f_cluster_recs := filter_corr(cluster_recs)) >= lim
         }
+        # get only first n highest clusters (most populated) if specified
+        filtered_clusters = filter_highest(filtered_clusters, hg)
+
         filtered_records_cnt = sum(len(fc) for fc in filtered_clusters.values())
         logging.info(
-            f'Filtered clusters with duplication = {dup}, min_len = {lim}: '
+            f'Filtered clusters with duplication = {dup}, min_len = {lim}, highest = {highest}: '
             f'clusters {len(filtered_clusters)}/{len(cls)}, records {filtered_records_cnt}/{unfiltered_records_cnt}')
         return filtered_clusters
 
     clusters_file = Tools.mmseqs2(merged_fasta, out)
     clusters = get_clusters(clusters_file)
-    clusters = filter_clusters(clusters, min_len, duplications)
+    clusters = filter_clusters(clusters, min_len, highest, duplications)
 
     logging.info(f'Clustered records - unique, filtered clusters: {len(clusters)}')
     return clusters
 
 
 def make_genes_families(clusters: Dict[str, list], out: str) -> List[str]:
+    """Based od clusters dict, save fasta files with protein families."""
     Path(out).mkdir(exist_ok=True)
 
     families = []
@@ -477,6 +477,7 @@ def make_genes_families(clusters: Dict[str, list], out: str) -> List[str]:
 
 
 def align_families(families: List[str], out: str) -> List[str]:
+    """Align protein families fastas within them, not with each other."""
     Path(out).mkdir(exist_ok=True)
 
     def get_output_filename(fasta: str, output: str) -> str:
@@ -503,6 +504,23 @@ def align_families(families: List[str], out: str) -> List[str]:
 
 
 def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
+    """Core of pipeline, building NJ, ML and MP trees.
+
+    Trees are built using:
+        - [NJ] neighbor-joining:    using ninja
+        - [ML] maximum-likelihood:  using RAxML
+        - [MP] maximum-parsimony:   using RAxML
+
+    Args:
+        aligned_fastas: filenames for aligned fasta files with protein families
+        out:            output directory for trees
+
+    Returns:
+        (list, list):   two lists, corresponding to filenames for:
+                            - built consensus trees (NJ, ML, MP)
+                            - built super trees (NJ, ML, MP)
+
+    """
     Path(out).mkdir(exist_ok=True)
     Path(nj_trees_dir := f'{out}/nj-trees').mkdir(exist_ok=True)
     Path(ml_trees_dir := f'{out}/ml-trees').mkdir(exist_ok=True)
@@ -516,6 +534,7 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
     mp_super = f'{out}/mp_super_tree.nwk'
 
     def unroot_tree(tree_file: str) -> str:
+        """Need to unroot trees from ninja, since they are rooted, while from RAxML are unrooted."""
         try:
             cline = f'ete3 mod --unroot -t {tree_file}'
             proc_out = subprocess.run(cline.split(), check=True, capture_output=True)
@@ -531,12 +550,14 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
             return ''
 
     def move_ninja_trees(nj_trees: List[str]):
+        """Move output trees from ninja to proper directory (NJ trees)."""
         Path(nj_trees_dir).mkdir(exist_ok=True)
         for nj_tree in nj_trees:
             family = Path(nj_tree).name
             Path(nj_tree).replace(f'{nj_trees_dir}/{family}.nwk')
 
     def move_raxml_trees(raxml_trees: List[Tuple[str, str, str]]):
+        """Move output trees from RAxML to proper directories (MP and ML trees)."""
         Path(ml_trees_dir).mkdir(exist_ok=True)
         Path(mp_trees_dir).mkdir(exist_ok=True)
         for ml_tree, mp_tree, family in raxml_trees:
@@ -544,6 +565,12 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
             Path(mp_tree).replace(f'{mp_trees_dir}/{family}.nwk')
 
     def make_ninja_trees():
+        """Make NJ trees using ninja.
+
+        Make neighbor-joining trees using ninja, then unroot them and move to proper directory.
+        Unroot trees for consistency with RAxML ML and MP trees.
+
+        """
         Path(f'{out}/ninja').mkdir(exist_ok=True, parents=True)
         ninja_trees = Parallel(n_jobs=4)(
             delayed(Tools.make_ninja_tree)
@@ -558,9 +585,16 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
         ]
         logging.info(f'Unrooted ninja NJ trees: {len(unrooted_ninja_trees)}/{len(ninja_trees)}')
         move_ninja_trees(unrooted_ninja_trees)
-        logging.info(f'Built unrooted NJ trees using ninja (store at {nj_trees_dir}): {len(ninja_trees)}')
+        logging.info(f'Built unrooted NJ trees using ninja '
+                     f'(store at {nj_trees_dir}): {len(ninja_trees)}')
 
     def make_raxml_trees():
+        """Make ML and MP trees using RAxML.
+
+        Make unrooted maximum-likelihood and maximum-parsimony trees using RAxML,
+        then move them to proper directory (no need to unroot like from ninja).
+
+        """
         Path(f'{out}/raxml').mkdir(exist_ok=True, parents=True)
         raxml_trees = Parallel(n_jobs=4)(
             delayed(Tools.make_RAxML_trees)
@@ -569,18 +603,22 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
         )
         raxml_trees = [tree for tree in raxml_trees if tree]
         move_raxml_trees(raxml_trees)
-        logging.info(f'Built unrooted ML and MP trees using RAxML (store at {ml_trees_dir}, {mp_trees_dir}): {len(raxml_trees)}')
+        logging.info(f'Built unrooted ML and MP trees using RAxML '
+                     f'(store at {ml_trees_dir}, {mp_trees_dir}): {len(raxml_trees)}')
 
     def make_consensus_trees(o_nj: str, o_ml: str, o_mp: str):
+        """Make NJ, ML and MP consensus trees."""
         Tools.make_phylo_consensus_tree(nj_trees_dir, o_nj)
         Tools.make_phylo_consensus_tree(ml_trees_dir, o_ml)
         Tools.make_phylo_consensus_tree(mp_trees_dir, o_mp)
 
     def make_super_trees(o_nj: str, o_ml: str, o_mp: str):
+        """Make NJ, ML and MP super trees."""
         Tools.make_clann_super_tree(nj_trees_dir, o_nj)
         Tools.make_clann_super_tree(ml_trees_dir, o_ml)
         Tools.make_clann_super_tree(mp_trees_dir, o_mp)
 
+    # if trees already under directory, don't make them again
     if not list(Path(nj_trees_dir).glob('*.nwk')):
         make_ninja_trees()
     if not list(Path(ml_trees_dir).glob('*.nwk')) and not list(Path(mp_trees_dir).glob('*.nwk')):
@@ -592,13 +630,30 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
     return [nj_cons, ml_cons, mp_cons], [nj_super, ml_super, mp_super]
 
 
-def retrieve_species_names(trees_files: List[str], orgs_map: Dict[str, str], rm_zero_lengths: bool = False):
+def retrieve_species_names(
+        trees_files: List[str],
+        orgs_map: Dict[str, str],
+        rm_zero_lengths: bool = False) -> List[str]:
+    """Retrieve real species names instead of inner IDs.
+
+    Since consensus and super trees are built using inner IDs for species ('A', 'B', 'AA', ...)
+    we need to retrieve real species names using `orgs_map` created before.
+
+    Also we remove zero-length branches from supertree, since Phylo while writes trees, writes
+    also branches lengths sometimes causing issues with displaying them.
+
+    Returns:
+        list: trees filenames with successfully retrieved species names
+
+    """
     def get_tree_only(tree: str) -> str:
+        """Supertrees are written with score after ';', remove it to be able to read newick tree."""
         tree_only = tree.split(';')[0]
         tree_only = f'{tree_only};'
         return tree_only
 
     def prune_trees(trees: List[str]):
+        """Remove scores from all trees, making them readable as newick."""
         for tree_f in trees:
             try:
                 with open(tree_f) as f:
@@ -615,10 +670,13 @@ def retrieve_species_names(trees_files: List[str], orgs_map: Dict[str, str], rm_
         ret = RecUtils.retrieve_species_names(tree_file, orgs_map, tree_file_ret, rm_zero_lengths)
         if ret:
             successfully_retrieved.append(ret)
+            Path(tree_file).unlink()  # remove tree without species translation
     logging.info(f'Retrieved species names for: {len(successfully_retrieved)}/{len(trees_files)}')
+    return successfully_retrieved
 
 
 def set_logger(log_file: str):
+    """Log info to stdout and file specified in argparse."""
     logging.root.handlers = []
     # noinspection PyArgumentList
     logging.basicConfig(
@@ -631,33 +689,84 @@ def set_logger(log_file: str):
     )
 
 
-def pipeline(input_args):
+def pipeline(input_args) -> List[str]:
+    """Core part of script, performing pipeline steps with provided arguments.
+
+    Arguments are read from user using argparse, run script with `-h` to see available options.
+    Following steps are performed in pipeline:
+        1) setting logger to log info to stdout to file (by default under output directory)
+        2) download proteomes for provided tax family, or for species names from .json file
+        3) filter fasta files with min and max sequences within, specified in args
+        4) change sequences IDs to inner species IDs for building trees purposes
+        5) merge all proteomes into one, big fasta file
+        6) cluster merged fasta file to obtain protein families from all species
+        7) save clusters to separate files, each per protein family
+        8) align all sequences within each protein family fasta file
+        9) build NJ, ML and MP trees from provided aligned protein families fasta files
+        10) retrieve species names for consensus and super trees from their inner IDs
+
+    Returns:
+        list: successfully built consensus and super NJ, ML and MP trees
+
+    """
     Path(input_args.output).mkdir(exist_ok=True)
 
     set_logger(input_args.log)
-    prots = download_proteomes(input_args.mode, input_args.input, input_args.fastas_dir, input_args.num)
-    prots = filter_fastas(prots, min_seqs=input_args.filter_min, max_seqs=input_args.filter_max)
-    recs_map, orgs_map = map_recs_to_species(prots, f'{input_args.output}/_recsmap.json')
-    all_prots = merge_fastas(prots, f'{input_args.output}/_merged.fasta')
+    prots = download_proteomes(
+        input_args.mode,
+        input_args.input,
+        fastas_out=input_args.fastas_dir,
+        limit=input_args.num
+    )
+    prots = filter_fastas(
+        prots,
+        min_seqs=input_args.filter_min,
+        max_seqs=input_args.filter_max
+    )
+    recs_map, orgs_map = map_recs_to_species(
+        prots,
+        f'{input_args.output}/_recsmap.json'
+    )
+    all_prots = merge_fastas(
+        prots,
+        f'{input_args.output}/_merged.fasta'
+    )
     clusters = clustering(
         all_prots,
         f'{input_args.output}/mmseqs2',
         min_len=input_args.cluster_min,
+        highest=input_args.cluster_highest,
         duplications=input_args.duplications,
         recs_map=recs_map
     )
-    families = make_genes_families(clusters, f'{input_args.output}/clusters')
-    aligned_families = align_families(families, f'{input_args.output}/align')
-    consensus_trees, super_trees = build_trees(aligned_families, f'{input_args.output}/trees')
-    retrieve_species_names(consensus_trees, orgs_map)
-    retrieve_species_names(super_trees, orgs_map, rm_zero_lengths=True)
+    families = make_genes_families(
+        clusters,
+        f'{input_args.output}/clusters'
+    )
+    aligned_families = align_families(
+        families,
+        f'{input_args.output}/align'
+    )
+    consensus_trees, super_trees = build_trees(
+        aligned_families,
+        f'{input_args.output}/trees'
+    )
+    consensus_trees = retrieve_species_names(
+        consensus_trees,
+        orgs_map=orgs_map
+    )
+    super_trees = retrieve_species_names(
+        super_trees,
+        orgs_map=orgs_map,
+        rm_zero_lengths=True
+    )
+
+    return [*super_trees, *consensus_trees]
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Phylogenetic pipeline to infer a species/genome tree from a set of genomes')
-    # parser.add_argument('file', type=str,
-    #                     help='file in .json format with list of species to be inferred')
     parser.add_argument('mode', type=str, choices=['family', 'file'],
                         help='pipeline mode')
     parser.add_argument('input', type=str,
@@ -666,6 +775,8 @@ if __name__ == '__main__':
                         help='limit downloading species to specific number')
     parser.add_argument('--cluster-min', type=int, default=4,
                         help='filter cluster proteomes minimum, by default: 4')
+    parser.add_argument('--cluster-highest', type=int,
+                        help='get only "n" most populated clusters')
     parser.add_argument('--filter-min', type=int, default=0,
                         help='filter proteomes minimum')
     parser.add_argument('--filter-max', type=int, default=100000,
@@ -688,4 +799,5 @@ if __name__ == '__main__':
 
     args.log = f'{args.output}/{args.log}'
 
-    pipeline(args)
+    built_trees = pipeline(args)
+    logging.info(f'Successfully built trees: {", ".join(built_trees)}')
