@@ -1,79 +1,106 @@
-# EvoTrees
+# evopipe
 
-Plant phylogenetic trees based on 16S for specified species, or blastp-ed HBA1 aa sequence from different species.
-
-# Requirements
-
-- [muscle](https://anaconda.org/bioconda/muscle) (must be in ``$PATH`` as ``muscle``)
-- [RAxML](https://github.com/stamatak/standard-RAxML) (must be in ``$PATH`` as ``raxml``)
-- [ninja](http://nimbletwist.com/software/ninja/index.html) (must be in ``$PATH`` as ``ninja``)
-- [biopython](https://biopython.org/) (``pip3 install -r requirements.txt``)
-
-# Run
-
-## 16S based on defined species
-
-```bash
-./phy.py 16S -f demo/species.txt -o 16S
-```
-
-Data will be under directory `16S` after execution, where trees will be planted at `16S/trees`.
-
-## HBA1 blastp-ed, limited to 100 species
-
-```bash
-./phy.py HBA1 -l 100 -o HBA1
-```
-
-Data will be under directory `HBA1` after execution, where trees will be planted at `HBA1/trees`.
-
-# Compare trees
+A phylogenetic pipeline for inferring a species/genome tree from a set of
+genomes by clustering, inferring gene families and their trees.
 
 ## Requirements
 
-To compare trees, module `robinson-foulds` is required:
-- [robinson-foulds](https://pypi.org/project/robinson-foulds/)
-
-But after installation, script should be edited as follow:
-
-```python
-t1 = Tree(args.treefile1, format=1)
-t2 = Tree(args.treefile2, format=1)
-  ```
+- [RAxML](https://github.com/stamatak/standard-RAxML) (must be in `$PATH` as `raxml`)
+- [ninja](http://nimbletwist.com/software/ninja/index.html) (must be in `$PATH` as `ninja`)
+- [clann](https://github.com/ChrisCreevey/clann) (must be in `$PATH` as `clann`)
+- [muscle](https://anaconda.org/bioconda/muscle) (`conda install -c bioconda muscle`)
+- [mmseqs2](https://github.com/soedinglab/MMseqs2) (`conda install -c conda-forge -c bioconda mmseqs2`)
+- [biopython](https://biopython.org/) (`conda install -c conda-forge biopython`)
+- [ete3](http://etetoolkit.org/) (`conda install -c etetoolkit ete3`)
+- [joblib](https://joblib.readthedocs.io/) (`conda install -c anaconda joblib`)
+- [requests](https://requests.readthedocs.io/en/master/) (`conda install -c anaconda requests`)
 
 ## Run
 
-```for tree in 16S/trees/*; do echo -n "$tree: "; rf species.nwk $tree; done```
-
-Where `species.nwk` is real tree. Robinson-Foulds distances should be displayed as floats next to trees names.
-
-# Example
-
 ```bash
-# plant trees
-./phy.py 16S -f demo/species.txt -o 16S
+usage: pipe.py [-h] [-n NUM] [--cluster-min CLUSTER_MIN] [--cluster-highest CLUSTER_HIGHEST] [--cluster-min-species-part CLUSTER_MIN_SPECIES_PART] [--filter-min FILTER_MIN] [--filter-max FILTER_MAX]
+               [--fastas-dir FASTAS_DIR] [-l LOG] [-d] [-o OUTPUT]
+               {family,file} input
 
-# robinson-foulds distance from real tree
-for tree in 16S/trees/*; do echo -n "$tree: "; rf demo/species.nwk $tree; done
+Phylogenetic pipeline to infer a species/genome tree from a set of genomes
 
-# output
-16S/trees/tree_ml.nwk: 0.0
-16S/trees/tree_mp.nwk: 0.3333333333333333
-16S/trees/tree_nj.nwk: 0.16666666666666666
+positional arguments:
+  {family,file}         pipeline mode
+  input                 family name or .json file with species names list which will be inferred
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -n NUM, --num NUM     limit downloading species to specific number
+  --cluster-min CLUSTER_MIN
+                        filter cluster proteomes minimum, by default: 4
+  --cluster-highest CLUSTER_HIGHEST
+                        get only "n" most populated clusters
+  --cluster-min-species-part CLUSTER_MIN_SPECIES_PART
+                        what part of all species should be guaranteed one-to-one correspondence clusters, by default 5, so 1/5 of all species
+  --filter-min FILTER_MIN
+                        filter proteomes minimum
+  --filter-max FILTER_MAX
+                        filter proteomes maximum
+  --fastas-dir FASTAS_DIR
+                        directory name with fasta files, by default: "fastas/"
+  -l LOG, --log LOG     logger file
+  -d, --duplications    allow duplications (paralogs)
+  -o OUTPUT, --output OUTPUT
+                        output directory, by default: name of family if "family" mode, otherwise "results"
 ```
 
-<html>
-<body>
-    <div>
-        <h4>RAxML_bestTree.results</h4>
-        <p>
-            <img src="demo/species_raxml_tree.png">
-        </p>
-        <h4>Real tree from <a href="http://timetree.org/" target="_blank">TIMETREE</a></h4>
-        <p>
-            <img src="demo/species_tree.png">
-        </p>
-    </div>
-</body>
-</html>
+## Example
 
+### File with species
+
+Providing `.json` file with list of species to be inferred:
+```bash
+$ head species.json
+[
+    "SARS coronavirus civet020",
+    "Bat coronavirus",
+    "Dromedary camel coronavirus HKU23",
+    "Hipposideros bat coronavirus HKU10",
+    "Human betacoronavirus 2c Jordan-N3/2012",
+    "Murine coronavirus SA59/RJHM",
+    "Feline coronavirus UU20",
+    "SARS coronavirus Sino3-11",
+    "Bat SARS-like coronavirus YNLF_34C",
+```
+
+Run pipeline with:
+```bash
+./pipe.py file species.json -o coronaviruses
+```
+
+All proteomes will be stored under `fastas` directory. All trees will be
+available at `coronaviruses/trees`, i.e.: `coronaviruses/trees/nj_super_tree_species.nwk`
+
+### Family name
+
+Providing family name, proteomes (each for one organism) will be downloaded
+(sorted by a score - so from best to worst) and then used to build trees:
+
+Run pipeline with:
+```bash
+./pipe.py family Coronaviridae -n 100
+```
+
+With above command, we'll obtain maximum 100 proteomes from _Coronaviridae_ which
+will be then stored under `fastas` directory. All trees will be available at `Coronaviridae/trees`, i.e.:
+`Coronaviridae/trees/nj_super_tree_species.nwk`
+
+## Pipeline
+
+Following steps are performed:
+1) Download proteomes for provided tax family, or for species names from `.json` file
+2) Filter fasta files with `min` and `max` sequences within, specified with `args`
+3) Change sequences IDs to inner species IDs for building trees purposes
+4) Merge all proteomes into one, big fasta file
+5) Cluster merged fasta file to obtain protein families from all species and filter
+   them getting only first `n` most populated clusters; with `min` sequences; with or
+   without duplications (`dup`) - all options specified in `args`
+6) Save clusters to separate files, each per protein family
+7) Align all sequences within each protein family fasta file
+8) Build NJ, ML and MP trees from provided aligned protein families fasta files
+9) Retrieve species names for consensus and super trees from their inner IDs
