@@ -2,11 +2,12 @@
 
 # Setup Ubuntu
 apt-get update && apt-get upgrade -y && apt-get install -y wget git gcc make tar build-essential libreadline-dev autotools-dev automake
-cd /
 
 # install clann
-git clone https://github.com/moozeq/clann.git
+git clone https://github.com/ChrisCreevey/clann.git
 cd clann
+chmod +x install-sh
+sed -i '3236s/.*/                        while(string[i] != \'(\' && string[i] != \')\' && string[i] != \',\' && string[i] != \';\' && string[i] != \':\')/' treecompare2.c
 ./configure
 #make
 # need to install manually due to some errors
