@@ -153,7 +153,7 @@ class Tools:
                 hs_config_params['swap'] = 'spr'
                 hs_config_params['maxswaps'] = 1000000
                 hs_config_params['nreps'] = 10
-            hs_config_params_str = ' '.join(f'{p}={v}' for p, v in hs_config_params)
+            hs_config_params_str = ' '.join(f'{p}={v}' for p, v in hs_config_params.items())
             config_str = f'execute; hs {hs_config_params_str} savetrees={out_tree_nwk}'
             return config_str
 
@@ -204,9 +204,9 @@ class Tools:
         """Cluster sequences in one, merged FASTA file using mmseqs2."""
         if not Path((cluster_file := f'{out}/_all_seqs.fasta')).exists():
             subprocess.run(f'mmseqs easy-cluster {merged_fasta} mmseqs2 {out}'.split())
-            Path('mmseqs2_all_seqs.fasta').replace(cluster_file)
-            Path('mmseqs2_cluster.tsv').replace(f'{out}/_cluster.tsv')
-            Path('mmseqs2_rep_seq.fasta').replace(f'{out}/_rep_seq.fasta')
+            shutil.copy('mmseqs2_all_seqs.fasta', cluster_file)
+            shutil.copy('mmseqs2_cluster.tsv', f'{out}/_cluster.tsv')
+            shutil.copy('mmseqs2_rep_seq.fasta', f'{out}/_rep_seq.fasta')
 
         return cluster_file
 
@@ -636,15 +636,15 @@ def build_trees(aligned_fastas: List[str], out: str, super_search: bool = False)
         Path(nj_trees_dir).mkdir(exist_ok=True)
         for nj_tree in nj_trees:
             family = Path(nj_tree).name
-            Path(nj_tree).replace(f'{nj_trees_dir}/{family}.nwk')
+            shutil.copy(nj_tree, f'{nj_trees_dir}/{family}.nwk')
 
     def move_raxml_trees(raxml_trees: List[Tuple[str, str, str]]):
         """Move output trees from RAxML to proper directories (MP and ML trees)."""
         Path(ml_trees_dir).mkdir(exist_ok=True)
         Path(mp_trees_dir).mkdir(exist_ok=True)
         for ml_tree, mp_tree, family in raxml_trees:
-            Path(ml_tree).replace(f'{ml_trees_dir}/{family}.nwk')
-            Path(mp_tree).replace(f'{mp_trees_dir}/{family}.nwk')
+            shutil.copy(ml_tree, f'{ml_trees_dir}/{family}.nwk')
+            shutil.copy(mp_tree, f'{mp_trees_dir}/{family}.nwk')
 
     def make_ninja_trees():
         """Make NJ trees using ninja.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Setup Ubuntu
-apt-get update && apt-get upgrade -y && apt-get install -y wget git gcc make tar build-essential libreadline-dev autotools-dev automake
+apt-get update && apt-get upgrade -y && apt-get install -y wget git gcc make tar build-essential libreadline-dev autotools-dev automake default-jre
 
 # install clann
 git clone https://github.com/ChrisCreevey/clann.git
@@ -48,5 +48,3 @@ rm /miniconda.sh
 /miniconda/bin/conda install -c bioconda -c conda-forge -c etetoolkit -c anaconda --file requirements.txt
 
 echo "[+] Installed miniconda with packages"
-
-exec $SHELL

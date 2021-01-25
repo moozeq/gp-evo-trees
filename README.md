@@ -17,9 +17,9 @@ genomes by clustering, inferring gene families and their trees.
 
 ## Run
 
-```bash
+```
 usage: pipe.py [-h] [-n NUM] [--cluster-min CLUSTER_MIN] [--cluster-highest CLUSTER_HIGHEST] [--cluster-min-species-part CLUSTER_MIN_SPECIES_PART] [--filter-min FILTER_MIN] [--filter-max FILTER_MAX]
-               [--fastas-dir FASTAS_DIR] [-l LOG] [-d] [-o OUTPUT]
+               [--fastas-dir FASTAS_DIR] [--duplications] [--super-search] [--cpu CPU] [-l LOG] [-o OUTPUT]
                {family,file} input
 
 Phylogenetic pipeline to infer a species/genome tree from a set of genomes
@@ -43,8 +43,10 @@ optional arguments:
                         filter proteomes maximum
   --fastas-dir FASTAS_DIR
                         directory name with fasta files, by default: "fastas/"
+  --duplications        allow duplications (paralogs)
+  --super-search        use more exhaustive search for super trees
+  --cpu CPU             specify how many cores use for parallel computations
   -l LOG, --log LOG     logger file
-  -d, --duplications    allow duplications (paralogs)
   -o OUTPUT, --output OUTPUT
                         output directory, by default: name of family if "family" mode, otherwise "results"
 ```
