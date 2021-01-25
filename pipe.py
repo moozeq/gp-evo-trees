@@ -152,7 +152,7 @@ class Tools:
             if ss:
                 hs_config_params['swap'] = 'spr'
                 hs_config_params['maxswaps'] = 1000000
-                hs_config_params['nreps'] = 10
+                hs_config_params['nreps'] = 1
             hs_config_params_str = ' '.join(f'{p}={v}' for p, v in hs_config_params.items())
             config_str = f'execute; hs {hs_config_params_str} savetrees={out_tree_nwk}'
             return config_str

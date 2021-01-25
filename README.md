@@ -3,19 +3,70 @@
 A phylogenetic pipeline for inferring a species/genome tree from a set of
 genomes by clustering, inferring gene families and their trees.
 
-## Requirements
+## Run (Docker)
 
-- [RAxML](https://github.com/stamatak/standard-RAxML) (must be in `$PATH` as `raxml`)
-- [ninja](http://nimbletwist.com/software/ninja/index.html) (must be in `$PATH` as `ninja`)
-- [clann](https://github.com/ChrisCreevey/clann) (must be in `$PATH` as `clann`)
-- [muscle](https://anaconda.org/bioconda/muscle) (`conda install -c bioconda muscle`)
-- [mmseqs2](https://github.com/soedinglab/MMseqs2) (`conda install -c conda-forge -c bioconda mmseqs2`)
-- [biopython](https://biopython.org/) (`conda install -c conda-forge biopython`)
-- [ete3](http://etetoolkit.org/) (`conda install -c etetoolkit ete3`)
-- [joblib](https://joblib.readthedocs.io/) (`conda install -c anaconda joblib`)
-- [requests](https://requests.readthedocs.io/en/master/) (`conda install -c anaconda requests`)
+```basha
+# build
+docker build -t evopipe github.com/moozeq/GP_EvoTrees#pipeline
 
-## Run
+# run for species from file analysis (see example below)
+docker run --name evopipe_container \
+           -v $PWD:/evopipe \
+           -t evopipe file species.json
+
+# run for family analysis (see example below)
+docker run --name evopipe_container \
+           -v $PWD:/evopipe \
+           -t evopipe family Coronaviridae
+```
+
+## Example
+
+### File with species
+
+Providing `.json` file with list of species to be inferred:
+```bash
+$ head species.json
+[
+    "SARS coronavirus civet020",
+    "Bat coronavirus",
+    "Dromedary camel coronavirus HKU23",
+    "Hipposideros bat coronavirus HKU10",
+    "Human betacoronavirus 2c Jordan-N3/2012",
+    "Murine coronavirus SA59/RJHM",
+    "Feline coronavirus UU20",
+    "SARS coronavirus Sino3-11",
+    "Bat SARS-like coronavirus YNLF_34C",
+```
+
+Run pipeline with:
+```bash
+docker run --name evopipe_container \
+           -v $PWD:/evopipe \
+           -t evopipe file species.json -o coronaviruses
+```
+
+All proteomes will be stored under `fastas` directory. All trees will be
+available at `coronaviruses/trees`, i.e.: `coronaviruses/trees/nj_super_tree_species.nwk`
+
+### Family name
+
+Providing family name, proteomes (each for one organism) will be downloaded
+(sorted by a score - so from best to worst) and then used to build trees:
+
+Run pipeline with:
+```bash
+# run for family analysis
+docker run --name evopipe_container \
+           -v $PWD:/evopipe \
+           -t evopipe family Coronaviridae -n 100
+```
+
+With above command, we'll obtain maximum 100 proteomes from _Coronaviridae_ which
+will be then stored under `fastas` directory. All trees will be available at `Coronaviridae/trees`, i.e.:
+`Coronaviridae/trees/nj_super_tree_species.nwk`
+
+## Commands
 
 ```
 usage: pipe.py [-h] [-n NUM] [--cluster-min CLUSTER_MIN] [--cluster-highest CLUSTER_HIGHEST] [--cluster-min-species-part CLUSTER_MIN_SPECIES_PART] [--filter-min FILTER_MIN] [--filter-max FILTER_MAX]
@@ -51,47 +102,6 @@ optional arguments:
                         output directory, by default: name of family if "family" mode, otherwise "results"
 ```
 
-## Example
-
-### File with species
-
-Providing `.json` file with list of species to be inferred:
-```bash
-$ head species.json
-[
-    "SARS coronavirus civet020",
-    "Bat coronavirus",
-    "Dromedary camel coronavirus HKU23",
-    "Hipposideros bat coronavirus HKU10",
-    "Human betacoronavirus 2c Jordan-N3/2012",
-    "Murine coronavirus SA59/RJHM",
-    "Feline coronavirus UU20",
-    "SARS coronavirus Sino3-11",
-    "Bat SARS-like coronavirus YNLF_34C",
-```
-
-Run pipeline with:
-```bash
-./pipe.py file species.json -o coronaviruses
-```
-
-All proteomes will be stored under `fastas` directory. All trees will be
-available at `coronaviruses/trees`, i.e.: `coronaviruses/trees/nj_super_tree_species.nwk`
-
-### Family name
-
-Providing family name, proteomes (each for one organism) will be downloaded
-(sorted by a score - so from best to worst) and then used to build trees:
-
-Run pipeline with:
-```bash
-./pipe.py family Coronaviridae -n 100
-```
-
-With above command, we'll obtain maximum 100 proteomes from _Coronaviridae_ which
-will be then stored under `fastas` directory. All trees will be available at `Coronaviridae/trees`, i.e.:
-`Coronaviridae/trees/nj_super_tree_species.nwk`
-
 ## Pipeline
 
 Following steps are performed:
@@ -106,3 +116,18 @@ Following steps are performed:
 7) Align all sequences within each protein family fasta file
 8) Build NJ, ML and MP trees from provided aligned protein families fasta files
 9) Retrieve species names for consensus and super trees from their inner IDs
+
+## Development
+
+It's highly recommended running pipeline in Docker, but if not, following packages are required with
+[Conda](https://docs.conda.io/) environment:
+
+- [RAxML](https://github.com/stamatak/standard-RAxML) (must be in `$PATH` as `raxml`)
+- [ninja](http://nimbletwist.com/software/ninja/index.html) (must be in `$PATH` as `ninja`)
+- [clann](https://github.com/ChrisCreevey/clann) (must be in `$PATH` as `clann`)
+- [muscle](https://anaconda.org/bioconda/muscle) (`conda install -c bioconda muscle`)
+- [mmseqs2](https://github.com/soedinglab/MMseqs2) (`conda install -c conda-forge -c bioconda mmseqs2`)
+- [biopython](https://biopython.org/) (`conda install -c conda-forge biopython`)
+- [ete3](http://etetoolkit.org/) (`conda install -c etetoolkit ete3`)
+- [joblib](https://joblib.readthedocs.io/) (`conda install -c anaconda joblib`)
+- [requests](https://requests.readthedocs.io/en/master/) (`conda install -c anaconda requests`)
