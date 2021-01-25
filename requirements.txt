@@ -1,0 +1,6 @@
+muscle
+mmseqs2
+biopython
+ete3
+joblib
+requests

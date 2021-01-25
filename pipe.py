@@ -139,10 +139,28 @@ class Tools:
             return ''
 
     @staticmethod
-    def make_clann_super_tree(trees_dir: str, out_tree_nwk: str) -> str:
-        """Make supertree using clann."""
+    def make_clann_super_tree(trees_dir: str, out_tree_nwk: str, super_search: bool = False) -> str:
+        """Make supertree using clann, if super_search - perform more exhaustive search."""
+        def get_config_str(ss: bool):
+            """Get config as single string which will be saved to file."""
+            hs_config_params = {
+                'swap': 'nni',
+                'maxswaps': 100000,
+                'nreps': 5,
+                'weight': 'equal',
+            }
+            if ss:
+                hs_config_params['swap'] = 'spr'
+                hs_config_params['maxswaps'] = 1000000
+                hs_config_params['nreps'] = 10
+            hs_config_params_str = ' '.join(f'{p}={v}' for p, v in hs_config_params)
+            config_str = f'execute; hs {hs_config_params_str} savetrees={out_tree_nwk}'
+            return config_str
+
         if Path(out_tree_nwk).exists():
             return out_tree_nwk
+
+        config = get_config_str(super_search)
 
         merged_trees = f'{trees_dir}/_alltrees.ph'
         cmds_file = f'{trees_dir}/_clanncmds'
@@ -156,7 +174,7 @@ class Tools:
                         f.write(tree_w_only_one_nl)
 
             with open(cmds_file, 'w') as cmds:
-                cmds.write(f'execute; hs swap=spr maxswaps=10000 nreps=3 weight=equal savetrees={out_tree_nwk}')
+                cmds.write(config)
 
             cline = f'clann -n -c {cmds_file} {merged_trees}'
             subprocess.run(str(cline).split(), check=True)
@@ -258,7 +276,6 @@ class Uniprot:
 
 def download_proteomes_by_names(names: List[str], fastas_out: str, limit: int = 100000) -> List[str]:
     """Providing list of organisms names, try to download proteomes with max limit."""
-    Path(fastas_out).mkdir(exist_ok=True)
     pids = {
         pid: org
         for org in names
@@ -293,7 +310,6 @@ def download_proteomes_by_names(names: List[str], fastas_out: str, limit: int = 
 def download_proteomes_by_family(family: str, fastas_out: str, limit: int = 100000) -> List[str]:
     """Providing taxonomy family name, try to download proteomes from it with max limit."""
     ids_file = Uniprot.download_proteomes_ids(family, f'{fastas_out}/_ids.tsv')
-    Path(fastas_out).mkdir(exist_ok=True)
     proteomes_files = {}
     with open(ids_file) as ifp:
         reader = iter(ifp)
@@ -314,6 +330,7 @@ def download_proteomes_by_family(family: str, fastas_out: str, limit: int = 1000
 
 def download_proteomes(mode: str, input: str, fastas_out: str, limit: int = 100000) -> List[str]:
     """Base on mode, set proper proteomes downloading option: by family or by file."""
+    Path(fastas_out).mkdir(exist_ok=True)
     if mode == 'family':
         return download_proteomes_by_family(input, fastas_out, limit)
     elif mode == 'file':
@@ -558,7 +575,7 @@ def align_families(families: List[str], out: str) -> List[str]:
             logging.error(f'Could not align fasta file: {fasta_in}')
             return ''
 
-    aligned = Parallel(n_jobs=4)(delayed(align_fasta_file)(
+    aligned = Parallel(n_jobs=args.cpu)(delayed(align_fasta_file)(
         fasta, get_output_filename(fasta, out)
     ) for fasta in families)
 
@@ -567,7 +584,7 @@ def align_families(families: List[str], out: str) -> List[str]:
     return aligned
 
 
-def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
+def build_trees(aligned_fastas: List[str], out: str, super_search: bool = False) -> (List[str], List[str]):
     """Core of pipeline, building NJ, ML and MP trees.
 
     Trees are built using:
@@ -578,6 +595,7 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
     Args:
         aligned_fastas: filenames for aligned fasta files with protein families
         out:            output directory for trees
+        super_search:   if True - perform exhaustive search for super trees
 
     Returns:
         (list, list):   two lists, corresponding to filenames for:
@@ -636,7 +654,7 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
 
         """
         Path(f'{out}/ninja').mkdir(exist_ok=True, parents=True)
-        ninja_trees = Parallel(n_jobs=4)(
+        ninja_trees = Parallel(n_jobs=args.cpu)(
             delayed(Tools.make_ninja_tree)
             (a_fasta, f'{out}/ninja')
             for a_fasta in aligned_fastas
@@ -660,7 +678,7 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
 
         """
         Path(f'{out}/raxml').mkdir(exist_ok=True, parents=True)
-        raxml_trees = Parallel(n_jobs=4)(
+        raxml_trees = Parallel(n_jobs=args.cpu)(
             delayed(Tools.make_RAxML_trees)
             (a_fasta, f'{out}/raxml')
             for a_fasta in aligned_fastas
@@ -672,15 +690,29 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
 
     def make_consensus_trees(o_nj: str, o_ml: str, o_mp: str):
         """Make NJ, ML and MP consensus trees."""
-        Tools.make_phylo_consensus_tree(nj_trees_dir, o_nj)
-        Tools.make_phylo_consensus_tree(ml_trees_dir, o_ml)
-        Tools.make_phylo_consensus_tree(mp_trees_dir, o_mp)
+        parameters = [
+            (nj_trees_dir, o_nj),
+            (ml_trees_dir, o_ml),
+            (mp_trees_dir, o_mp),
+        ]
+        Parallel(n_jobs=args.cpu)(
+            delayed(Tools.make_phylo_consensus_tree)(  # make_phylo_consensus_tree
+                t_dir, t_out
+            ) for t_dir, t_out in parameters
+        )
 
-    def make_super_trees(o_nj: str, o_ml: str, o_mp: str):
+    def make_super_trees(o_nj: str, o_ml: str, o_mp: str, ss: bool):
         """Make NJ, ML and MP super trees."""
-        Tools.make_clann_super_tree(nj_trees_dir, o_nj)
-        Tools.make_clann_super_tree(ml_trees_dir, o_ml)
-        Tools.make_clann_super_tree(mp_trees_dir, o_mp)
+        parameters = [
+            (nj_trees_dir, o_nj),
+            (ml_trees_dir, o_ml),
+            (mp_trees_dir, o_mp),
+        ]
+        Parallel(n_jobs=args.cpu)(
+            delayed(Tools.make_clann_super_tree)(  # make_clann_super_tree
+                t_dir, t_out, ss
+            ) for t_dir, t_out in parameters
+        )
 
     # if trees already under directory, don't make them again
     if not list(Path(nj_trees_dir).glob('*.nwk')):
@@ -689,7 +721,7 @@ def build_trees(aligned_fastas: List[str], out: str) -> (List[str], List[str]):
         make_raxml_trees()
 
     make_consensus_trees(nj_cons, ml_cons, mp_cons)
-    make_super_trees(nj_super, ml_super, mp_super)
+    make_super_trees(nj_super, ml_super, mp_super, super_search)
 
     return [nj_cons, ml_cons, mp_cons], [nj_super, ml_super, mp_super]
 
@@ -819,7 +851,8 @@ def pipeline(input_args) -> List[str]:
         )
         consensus_trees, super_trees = build_trees(
             aligned_families,
-            f'{input_args.output}/{prefix}trees'
+            f'{input_args.output}/{prefix}trees',
+            super_search=input_args.super_search
         )
         consensus_trees = retrieve_species_names(
             consensus_trees,
@@ -868,10 +901,14 @@ if __name__ == '__main__':
                         help='filter proteomes maximum')
     parser.add_argument('--fastas-dir', type=str, default='fastas',
                         help='directory name with fasta files, by default: "fastas/"')
+    parser.add_argument('--duplications', action='store_true', default=False,
+                        help='allow duplications (paralogs)')
+    parser.add_argument('--super-search', action='store_true', default=False,
+                        help='use more exhaustive search for super trees')
+    parser.add_argument('--cpu', type=int, default=4,
+                        help='specify how many cores use for parallel computations')
     parser.add_argument('-l', '--log', type=str, default='info.log',
                         help='logger file')
-    parser.add_argument('-d', '--duplications', action='store_true', default=False,
-                        help='allow duplications (paralogs)')
     parser.add_argument('-o', '--output', type=str,
                         help='output directory, by default: name of family if "family" mode, otherwise "results"')
     args = parser.parse_args()
@@ -885,4 +922,4 @@ if __name__ == '__main__':
     args.log = f'{args.output}/{args.log}'
 
     built_trees = pipeline(args)
-    logging.info(f'Successfully built trees: {", ".join(built_trees)}')
+    logging.info(f'Successfully built trees: {built_trees}')
