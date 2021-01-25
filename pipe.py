@@ -294,6 +294,10 @@ def download_proteomes_by_names(names: List[str], fastas_out: str, limit: int = 
     if not pids and not proteomes_files:
         raise Exception('No proteome IDs loaded')
 
+    if len(proteomes_files) >= limit:
+        logging.info(f'Used only local proteomes (limit = {limit}): {len(proteomes_files)}/{len(names)}')
+        return list(proteomes_files.values())[:limit]
+
     logging.info(f'Translated organisms names to proteomes IDs: {len(pids) + len(proteomes_files)}/{len(names)}')
     for i, (pid, org) in enumerate(pids.items()):
         if (
