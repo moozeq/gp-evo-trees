@@ -18,7 +18,8 @@ genomes by clustering, inferring gene families and their trees.
 ## Run
 
 ```bash
-usage: pipe.py [-h] [-n NUM] [--cluster-min CLUSTER_MIN] [--cluster-highest CLUSTER_HIGHEST] [--filter-min FILTER_MIN] [--filter-max FILTER_MAX] [--fastas-dir FASTAS_DIR] [-l LOG] [-d] [-o OUTPUT]
+usage: pipe.py [-h] [-n NUM] [--cluster-min CLUSTER_MIN] [--cluster-highest CLUSTER_HIGHEST] [--cluster-min-species-part CLUSTER_MIN_SPECIES_PART] [--filter-min FILTER_MIN] [--filter-max FILTER_MAX]
+               [--fastas-dir FASTAS_DIR] [-l LOG] [-d] [-o OUTPUT]
                {family,file} input
 
 Phylogenetic pipeline to infer a species/genome tree from a set of genomes
@@ -34,6 +35,8 @@ optional arguments:
                         filter cluster proteomes minimum, by default: 4
   --cluster-highest CLUSTER_HIGHEST
                         get only "n" most populated clusters
+  --cluster-min-species-part CLUSTER_MIN_SPECIES_PART
+                        what part of all species should be guaranteed one-to-one correspondence clusters, by default 5, so 1/5 of all species
   --filter-min FILTER_MIN
                         filter proteomes minimum
   --filter-max FILTER_MAX

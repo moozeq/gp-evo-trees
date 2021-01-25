@@ -10,7 +10,7 @@ from string import ascii_lowercase
 import requests
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Set
 
 from Bio import Phylo
 from Bio.Phylo.Consensus import majority_consensus
@@ -385,10 +385,11 @@ def merge_fastas(fastas: List[str], out: str) -> str:
 
 def clustering(merged_fasta: str,
                out: str,
-               min_len: int,
-               highest: int,
-               duplications: bool,
-               recs_map: Dict[str, str]) -> Dict[str, list]:
+               recs_map: Dict[str, str],
+               min_len: int = 2,
+               min_species_part: int = 5,
+               highest: int = 0,
+               duplications: bool = False) -> (Dict[str, list], Dict[str, list]):
     """Cluster merged fasta file (proteomes) to proteins families."""
     def rename_fasta_record(seq: SeqRecord, name: str):
         """Set inner ID as sequence ID."""
@@ -413,22 +414,22 @@ def clustering(merged_fasta: str,
 
         return unfiltered_clusters
 
+    def filter_duplications(cls_recs, dup):
+        """Filter correspondence, if dup == True, it means allow duplications (paralogs) in clusters."""
+        if dup:
+            return cls_recs
+        # remove duplicates, one-to-one correspondence
+        ids = set()
+        corr_cls_recs = []
+        for cls_rec in cls_recs:
+            if cls_rec.id in ids:
+                continue
+            corr_cls_recs.append(cls_rec)
+            ids.add(cls_rec.id)
+        return corr_cls_recs
+
     def filter_clusters(cls: Dict[str, List[SeqRecord]], lim: int, hg: int, dup: bool) -> Dict[str, list]:
         """Filter out clusters with min length (lim), first highest (hg), duplications allowance (dup)."""
-        def filter_corr(cls_recs):
-            """Filter correspondence, if dup == True, it means allow duplications (paralogs) in clusters."""
-            if dup:
-                return cls_recs
-            # remove duplicates, one-to-one correspondence
-            ids = set()
-            corr_cls_recs = []
-            for cls_rec in cls_recs:
-                if cls_rec.id in ids:
-                    continue
-                corr_cls_recs.append(cls_rec)
-                ids.add(cls_rec.id)
-            return corr_cls_recs
-
         def filter_highest(cls_recs, hg_filter: int):
             """Get only first n most populated clusters."""
             if hg_filter:
@@ -443,7 +444,7 @@ def clustering(merged_fasta: str,
         filtered_clusters = {
             cluster_name: f_cluster_recs
             for cluster_name, cluster_recs in cls.items()
-            if len(f_cluster_recs := filter_corr(cluster_recs)) >= lim
+            if len(f_cluster_recs := filter_duplications(cluster_recs, duplications)) >= lim
         }
         # get only first n highest clusters (most populated) if specified
         filtered_clusters = filter_highest(filtered_clusters, hg)
@@ -454,12 +455,75 @@ def clustering(merged_fasta: str,
             f'clusters {len(filtered_clusters)}/{len(cls)}, records {filtered_records_cnt}/{unfiltered_records_cnt}')
         return filtered_clusters
 
+    def filter_one_to_one(cls: Dict[str, List[SeqRecord]], lim: int, min_sp_part: int) -> Dict[str, list]:
+        """Guarantee one-to-one correspondence for minimum species specified"""
+        def prune_cluster(cls_recs_to_prune: List[SeqRecord], only_species: Set[str]):
+            pruned_cls_recs = [
+                rec
+                for rec in cls_recs_to_prune
+                if rec.id in only_species
+            ]
+            return pruned_cls_recs
+
+        # at least part of all species must remain after filtering
+        species_min = (all_species_cnt := len(set(recs_map.values()))) // min_sp_part
+
+        unfiltered_records_cnt = sum(len(fc) for fc in cls.values())
+
+        # filter out clusters without meeting minimum len
+        filtered_clusters = {
+            cluster_name: f_cluster_recs
+            for cluster_name, cluster_recs in cls.items()
+            if len(f_cluster_recs := filter_duplications(cluster_recs, False)) >= lim
+        }
+
+        # guarantee correspondence one-to-one
+        clusters_from_highest = sorted(filtered_clusters, key=lambda k: len(filtered_clusters[k]), reverse=True)
+        species = set()
+        one_to_one_clusters = {}
+        # start from most populated clusters and add clusters till species_min included
+        for cls_name in clusters_from_highest:
+            cur_cls: List[SeqRecord] = filtered_clusters[cls_name]
+            cls_species = {sp.id for sp in cur_cls}
+            # first iteration, biggest family comes first
+            if not species:
+                species = cls_species
+                one_to_one_clusters[cls_name] = cur_cls
+                continue
+            # still can add clusters since min species correspondence guaranteed
+            if len(cls_species_intersect := species.intersection(cls_species)) >= species_min:
+                species = cls_species_intersect
+                one_to_one_clusters[cls_name] = cur_cls
+            else:
+                break
+
+        # remove species which occurs in filtered clusters but without one-to-one correspondence
+        filtered_one_to_one_clusters = {
+            cls_name: pruned_cls_recs
+            for cls_name, cls_recs in one_to_one_clusters.items()
+            if (pruned_cls_recs := prune_cluster(cls_recs, species))
+        }
+
+        corr_records_cnt = sum(len(fc) for fc in filtered_one_to_one_clusters.values())
+        logging.info(
+            f'Filtered clusters one-to-one correspondence without duplication, min_len = {lim}, '
+            f'min species = {species_min}: '
+            f'clusters {len(filtered_one_to_one_clusters)}/{len(cls)}, '
+            f'species {len(species)}/{all_species_cnt}, '
+            f'records {corr_records_cnt}/{unfiltered_records_cnt}'
+        )
+        return filtered_one_to_one_clusters
+
     clusters_file = Tools.mmseqs2(merged_fasta, out)
     clusters = get_clusters(clusters_file)
-    clusters = filter_clusters(clusters, min_len, highest, duplications)
+    filter_clusters = filter_clusters(clusters, min_len, highest, duplications)
+    corr_clusters = filter_one_to_one(clusters, min_len, min_species_part)
 
-    logging.info(f'Clustered records - unique, filtered clusters: {len(clusters)}')
-    return clusters
+    logging.info(
+        f'Clustered records, filtered clusters: {len(filter_clusters)}/{len(clusters)}, '
+        f'correspondence guaranteed clusters: {len(corr_clusters)}/{len(clusters)}'
+    )
+    return filter_clusters, corr_clusters
 
 
 def make_genes_families(clusters: Dict[str, list], out: str) -> List[str]:
@@ -712,6 +776,7 @@ def pipeline(input_args) -> List[str]:
     Path(input_args.output).mkdir(exist_ok=True)
 
     set_logger(input_args.log)
+
     prots = download_proteomes(
         input_args.mode,
         input_args.input,
@@ -731,37 +796,54 @@ def pipeline(input_args) -> List[str]:
         prots,
         f'{input_args.output}/_merged.fasta'
     )
-    clusters = clustering(
+    filtered_clusters, corr_clusters = clustering(
         all_prots,
         f'{input_args.output}/mmseqs2',
+        recs_map=recs_map,
         min_len=input_args.cluster_min,
+        min_species_part=input_args.cluster_min_species_part,
         highest=input_args.cluster_highest,
-        duplications=input_args.duplications,
-        recs_map=recs_map
-    )
-    families = make_genes_families(
-        clusters,
-        f'{input_args.output}/clusters'
-    )
-    aligned_families = align_families(
-        families,
-        f'{input_args.output}/align'
-    )
-    consensus_trees, super_trees = build_trees(
-        aligned_families,
-        f'{input_args.output}/trees'
-    )
-    consensus_trees = retrieve_species_names(
-        consensus_trees,
-        orgs_map=orgs_map
-    )
-    super_trees = retrieve_species_names(
-        super_trees,
-        orgs_map=orgs_map,
-        rm_zero_lengths=True
+        duplications=input_args.duplications
     )
 
-    return [*super_trees, *consensus_trees]
+    def second_stage(clusters: Dict[str, List[SeqRecord]], prefix: str):
+        """Second stage for pipeline to perform after clustering"""
+        logging.info(f'[2nd STAGE] Started pipeline 2nd stage for clusters count: {len(clusters)}, prefix: {prefix}')
+        families = make_genes_families(
+            clusters,
+            f'{input_args.output}/{prefix}clusters'
+        )
+        aligned_families = align_families(
+            families,
+            f'{input_args.output}/{prefix}align'
+        )
+        consensus_trees, super_trees = build_trees(
+            aligned_families,
+            f'{input_args.output}/{prefix}trees'
+        )
+        consensus_trees = retrieve_species_names(
+            consensus_trees,
+            orgs_map=orgs_map
+        )
+        super_trees = retrieve_species_names(
+            super_trees,
+            orgs_map=orgs_map,
+            rm_zero_lengths=True
+        )
+        logging.info(f'[2nd STAGE] Ended pipeline 2nd stage for clusters count: {len(clusters)}, prefix: {prefix}, '
+                     f'built consensus trees: {consensus_trees}, '
+                     f'built super trees: {super_trees}')
+        return consensus_trees, super_trees
+
+    corr_consensus_trees, corr_super_trees = second_stage(corr_clusters, 'corr_')
+    filtered_consensus_trees, filtered_super_trees = second_stage(filtered_clusters, 'filter_')
+
+    return [
+        *corr_super_trees,
+        *corr_consensus_trees,
+        *filtered_super_trees,
+        *filtered_consensus_trees,
+    ]
 
 
 if __name__ == '__main__':
@@ -777,6 +859,9 @@ if __name__ == '__main__':
                         help='filter cluster proteomes minimum, by default: 4')
     parser.add_argument('--cluster-highest', type=int,
                         help='get only "n" most populated clusters')
+    parser.add_argument('--cluster-min-species-part', type=int, default=5,
+                        help='what part of all species should be guaranteed one-to-one correspondence '
+                             'clusters, by default 5, so 1/5 of all species')
     parser.add_argument('--filter-min', type=int, default=0,
                         help='filter proteomes minimum')
     parser.add_argument('--filter-max', type=int, default=100000,
