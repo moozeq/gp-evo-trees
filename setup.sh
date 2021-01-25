@@ -7,7 +7,8 @@ apt-get update && apt-get upgrade -y && apt-get install -y wget git gcc make tar
 git clone https://github.com/ChrisCreevey/clann.git
 cd clann
 chmod +x install-sh
-sed -i '3236s/.*/                        while(string[i] != \'(\' && string[i] != \')\' && string[i] != \',\' && string[i] != \';\' && string[i] != \':\')/' treecompare2.c
+PATCH_LINE="                        while(string[i] != '(' && string[i] != ')' && string[i] != ',' && string[i] != ';' && string[i] != ':')"
+sed -i "3236s/.*/${$PATCH_LINE}/" treecompare2.c
 ./configure
 #make
 # need to install manually due to some errors
@@ -17,6 +18,8 @@ gcc -g -O2 -Wall -funroll-loops -o clann treecompare2.o -lreadline -lncurses -lm
 mv clann /bin/clann
 cd ..
 
+echo "[+] Installed clann"
+
 # install raxml
 git clone https://github.com/stamatak/standard-RAxML.git
 cd standard-RAxML
@@ -25,11 +28,15 @@ rm *.o
 mv raxmlHPC-PTHREADS-AVX /bin/raxml
 cd ..
 
+echo "[+] Installed RAxML"
+
 # install ninja
 curl http://nimbletwist.com/software/ninja/files/ninja.tgz > ninja.tgz
 tar -xvf ninja.tgz
 mv ninja_*/ninja /bin/ninja
 mv ninja_*/Ninja.jar /bin/Ninja.jar
+
+echo "[+] Installed ninja"
 
 # Get Miniconda and make it the main Python interpreter
 wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /miniconda.sh
@@ -39,3 +46,7 @@ rm /miniconda.sh
 
 # install packages
 /miniconda/bin/conda install -c bioconda -c conda-forge -c etetoolkit -c anaconda --file requirements.txt
+
+echo "[+] Installed miniconda with packages"
+
+exec $SHELL
