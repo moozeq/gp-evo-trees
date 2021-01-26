@@ -151,7 +151,7 @@ class Tools:
             }
             if ss:
                 hs_config_params['swap'] = 'spr'
-                hs_config_params['maxswaps'] = 500000
+                hs_config_params['maxswaps'] = 100000
                 hs_config_params['nreps'] = 3
             hs_config_params_str = ' '.join(f'{p}={v}' for p, v in hs_config_params.items())
             config_str = f'execute; hs {hs_config_params_str} savetrees={out_tree_nwk}'
@@ -766,11 +766,14 @@ def retrieve_species_names(
     prune_trees(trees_files)
     successfully_retrieved = []
     for tree_file in trees_files:
-        tree_file_ret = f'{tree_file[:-len(".nwk")]}_species.nwk'
+        if Path(tree_file_ret := f'{tree_file[:-len(".nwk")]}_species.nwk').exists():
+            continue
         ret = RecUtils.retrieve_species_names(tree_file, orgs_map, tree_file_ret, rm_zero_lengths)
         if ret:
             successfully_retrieved.append(ret)
-            Path(tree_file).unlink()  # remove tree without species translation
+            # don't remove tree after because script's checking if exists before building them
+            # so in case there was already built tree, it won't build it again
+            # Path(tree_file).unlink()  # remove tree without species translation
     logging.info(f'Retrieved species names for: {len(successfully_retrieved)}/{len(trees_files)}')
     return successfully_retrieved
 
