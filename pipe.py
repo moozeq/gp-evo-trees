@@ -151,7 +151,7 @@ class Tools:
             }
             if ss:
                 hs_config_params['swap'] = 'spr'
-                hs_config_params['maxswaps'] = 100000
+                hs_config_params['maxswaps'] = 500000
                 hs_config_params['nreps'] = 3
             hs_config_params_str = ' '.join(f'{p}={v}' for p, v in hs_config_params.items())
             config_str = f'execute; hs {hs_config_params_str} savetrees={out_tree_nwk}'
@@ -470,10 +470,15 @@ def clustering(merged_fasta: str,
         # get only first n highest clusters (most populated) if specified
         filtered_clusters = filter_highest(filtered_clusters, hg)
 
+        all_species_cnt = len(set(recs_map.values()))
+        filtered_species_cnt = len(set(sp.id for sp_l in filtered_clusters.values() for sp in sp_l))
         filtered_records_cnt = sum(len(fc) for fc in filtered_clusters.values())
         logging.info(
-            f'Filtered clusters with duplication = {dup}, min_len = {lim}, highest = {highest}: '
-            f'clusters {len(filtered_clusters)}/{len(cls)}, records {filtered_records_cnt}/{unfiltered_records_cnt}')
+            f'Filtered clusters'
+            f'with duplication = {dup}, min_len = {lim}, highest = {highest}: '
+            f'clusters {len(filtered_clusters)}/{len(cls)}, '
+            f'species {filtered_species_cnt}/{all_species_cnt}, '
+            f'records {filtered_records_cnt}/{unfiltered_records_cnt}')
         return filtered_clusters
 
     def filter_one_to_one(cls: Dict[str, List[SeqRecord]], lim: int, min_sp_part: int) -> Dict[str, list]:
@@ -527,8 +532,8 @@ def clustering(merged_fasta: str,
 
         corr_records_cnt = sum(len(fc) for fc in filtered_one_to_one_clusters.values())
         logging.info(
-            f'Filtered clusters one-to-one correspondence without duplication, min_len = {lim}, '
-            f'min species = {species_min}: '
+            f'Filtered clusters one-to-one correspondence '
+            f'without duplication, min_len = {lim}, min species = {species_min}: '
             f'clusters {len(filtered_one_to_one_clusters)}/{len(cls)}, '
             f'species {len(species)}/{all_species_cnt}, '
             f'records {corr_records_cnt}/{unfiltered_records_cnt}'
@@ -699,11 +704,8 @@ def build_trees(aligned_fastas: List[str], out: str, super_search: bool = False)
             (ml_trees_dir, o_ml),
             (mp_trees_dir, o_mp),
         ]
-        Parallel(n_jobs=args.cpu)(
-            delayed(Tools.make_phylo_consensus_tree)(  # make_phylo_consensus_tree
-                t_dir, t_out
-            ) for t_dir, t_out in parameters
-        )
+        for t_dir, t_out in parameters:
+            Tools.make_phylo_consensus_tree(t_dir, t_out)  # make consensus trees
 
     def make_super_trees(o_nj: str, o_ml: str, o_mp: str, ss: bool):
         """Make NJ, ML and MP super trees."""
@@ -712,11 +714,14 @@ def build_trees(aligned_fastas: List[str], out: str, super_search: bool = False)
             (ml_trees_dir, o_ml),
             (mp_trees_dir, o_mp),
         ]
-        Parallel(n_jobs=args.cpu)(
-            delayed(Tools.make_clann_super_tree)(  # make_clann_super_tree
-                t_dir, t_out, ss
-            ) for t_dir, t_out in parameters
-        )
+        for t_dir, t_out in parameters:
+            Tools.make_clann_super_tree(t_dir, t_out, ss)  # make super trees
+        # clann sometimes may not work in parallel
+        # Parallel(n_jobs=args.cpu)(
+        #     delayed(Tools.make_clann_super_tree)(  # make_clann_super_tree
+        #         t_dir, t_out, ss
+        #     ) for t_dir, t_out in parameters
+        # )
 
     # if trees already under directory, don't make them again
     if not list(Path(nj_trees_dir).glob('*.nwk')):

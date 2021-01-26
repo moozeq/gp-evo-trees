@@ -47,7 +47,8 @@ docker run --name evopipe_file \
 ```
 
 All proteomes will be stored under `fastas` directory. All trees will be
-available at `coronaviruses/trees`, i.e.: `coronaviruses/trees/nj_super_tree_species.nwk`
+available at `coronaviruses/filter_trees`
+an `coronaviruses/corr_trees`, i.e.: `coronaviruses/filter_trees/nj_super_tree_species.nwk`
 
 ### Family name
 
@@ -63,8 +64,8 @@ docker run --name evopipe_family \
 ```
 
 With above command, we'll obtain maximum 100 proteomes from _Coronaviridae_ which
-will be then stored under `fastas` directory. All trees will be available at `Coronaviridae/trees`, i.e.:
-`Coronaviridae/trees/nj_super_tree_species.nwk`
+will be then stored under `fastas` directory. All trees will be available at `Coronaviridae/filter_trees`
+an `Coronaviridae/corr_trees`, i.e.: `Coronaviridae/filter_trees/nj_super_tree_species.nwk`
 
 ## Commands
 
