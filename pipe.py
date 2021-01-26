@@ -210,6 +210,18 @@ class Tools:
 
         return cluster_file
 
+    @staticmethod
+    def align_fasta_file(fasta_in: str, fasta_out: str):
+        if Path(fasta_out).exists():
+            return fasta_out
+        cline = MuscleCommandline(input=fasta_in, out=fasta_out)
+        try:
+            subprocess.run(str(cline).split(), check=True)
+            return fasta_out
+        except subprocess.CalledProcessError:
+            logging.error(f'Could not align fasta file: {fasta_in}')
+            return ''
+
 
 class Uniprot:
     """Functions calling Uniprot API to retrieve proteomes or their IDs."""
@@ -573,18 +585,7 @@ def align_families(families: List[str], out: str) -> List[str]:
     def get_output_filename(fasta: str, output: str) -> str:
         return f'{output}/{Path(fasta).name}'
 
-    def align_fasta_file(fasta_in: str, fasta_out: str):
-        if Path(fasta_out).exists():
-            return fasta_out
-        cline = MuscleCommandline(input=fasta_in, out=fasta_out)
-        try:
-            subprocess.run(str(cline).split(), check=True)
-            return fasta_out
-        except subprocess.CalledProcessError:
-            logging.error(f'Could not align fasta file: {fasta_in}')
-            return ''
-
-    aligned = Parallel(n_jobs=args.cpu)(delayed(align_fasta_file)(
+    aligned = Parallel(n_jobs=args.cpu)(delayed(Tools.align_fasta_file)(
         fasta, get_output_filename(fasta, out)
     ) for fasta in families)
 
@@ -716,8 +717,8 @@ def build_trees(aligned_fastas: List[str], out: str, super_search: bool = False)
         ]
         for t_dir, t_out in parameters:
             Tools.make_clann_super_tree(t_dir, t_out, ss)  # make super trees
-        # clann sometimes may not work in parallel
-        # Parallel(n_jobs=args.cpu)(
+        # clann sometimes may causes issues in parallel mode
+        # Parallel(n_jobs=args.cpu if args.cpu < len(parameters) else len(parameters))(
         #     delayed(Tools.make_clann_super_tree)(  # make_clann_super_tree
         #         t_dir, t_out, ss
         #     ) for t_dir, t_out in parameters
