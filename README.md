@@ -11,14 +11,25 @@ docker build -t evopipe github.com/moozeq/GP_EvoTrees#pipeline
 
 # run for species from file analysis (see example below)
 docker run --name evopipe_file \
-           -v $PWD:/evopipe \
+           -v $PWD/results:/evopipe/results \
+           -v $PWD/species.json:/evopipe/species.json \
            -t evopipe file species.json
 
 # run for family analysis (see example below)
 docker run --name evopipe_family \
-           -v $PWD:/evopipe \
+           -v $PWD/Coronaviridae:/evopipe/Coronaviridae \
            -t evopipe family Coronaviridae
 ```
+
+All analyzed data will be stored under mounted point:
+- `$PWD/results` - default directory for results when read species from file
+- `$PWD/Coronaviridae` - directory corresponds to family name if specified instead of file
+
+If output directory specified as argument, i.e. `-o coronaviruses`, then mounting
+point must be the same - `-v $PWD/coronaviruses:/evopipe/coronaviruses`.
+
+Logs from run will be available at `$PWD/<output dir>/info.log` (file may also be specified
+using `--log` option).
 
 ## Example
 
@@ -42,12 +53,24 @@ $ head species.json
 Run pipeline with:
 ```bash
 docker run --name evopipe_file \
-           -v $PWD:/evopipe \
+           -v $PWD/coronaviruses:/evopipe/coronaviruses \
+           -v $PWD/species.json:/evopipe/species.json \
            -t evopipe file species.json -o coronaviruses
 ```
 
-All proteomes will be stored under `fastas` directory. All trees will be
-available at `coronaviruses/filter_trees`
+All proteomes will be stored under `fastas` directory inside docker, if you want
+to perform multiple analysis without downloading proteomes each time, add mounting
+`fastas` directory to `docker run` command:
+
+```bash
+docker run --name evopipe_file \
+           -v $PWD/coronaviruses:/evopipe/coronaviruses \
+           -v $PWD/species.json:/evopipe/species.json \
+           -v $PWD/fastas:/evopipe/fastas \
+           -t evopipe file species.json -o coronaviruses
+```
+
+All trees will be available at `coronaviruses/filter_trees`
 an `coronaviruses/corr_trees`, i.e.: `coronaviruses/filter_trees/nj_super_tree_species.nwk`
 
 ### Family name
@@ -59,13 +82,13 @@ Run pipeline with:
 ```bash
 # run for family analysis
 docker run --name evopipe_family \
-           -v $PWD:/evopipe \
+           -v $PWD/Coronaviridae:/evopipe/Coronaviridae \
            -t evopipe family Coronaviridae -n 100
 ```
 
-With above command, we'll obtain maximum 100 proteomes from _Coronaviridae_ which
-will be then stored under `fastas` directory. All trees will be available at `Coronaviridae/filter_trees`
-an `Coronaviridae/corr_trees`, i.e.: `Coronaviridae/filter_trees/nj_super_tree_species.nwk`
+With above command, we'll obtain maximum 100 proteomes from _Coronaviridae_.
+All trees will be available at `Coronaviridae/filter_trees` and `Coronaviridae/corr_trees`,
+i.e.: `Coronaviridae/filter_trees/nj_super_tree_species.nwk`
 
 ## Commands
 
