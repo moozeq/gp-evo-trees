@@ -144,15 +144,16 @@ class Tools:
         def get_config_str(ss: bool):
             """Get config as single string which will be saved to file."""
             hs_config_params = {
-                'swap': 'nni',
+                'swap': 'spr',
                 'maxswaps': 100000,
-                'nreps': 5,
+                'nreps': 1,
                 'weight': 'equal',
             }
             if ss:
                 hs_config_params['swap'] = 'spr'
                 hs_config_params['maxswaps'] = 500000
                 hs_config_params['nreps'] = 3
+
             hs_config_params_str = ' '.join(f'{p}={v}' for p, v in hs_config_params.items())
             config_str = f'execute; hs {hs_config_params_str} savetrees={out_tree_nwk}'
             return config_str
@@ -203,10 +204,14 @@ class Tools:
     def mmseqs2(merged_fasta: str, out: str):
         """Cluster sequences in one, merged FASTA file using mmseqs2."""
         if not Path((cluster_file := f'{out}/_all_seqs.fasta')).exists():
-            subprocess.run(f'mmseqs easy-cluster {merged_fasta} mmseqs2 {out}'.split())
-            shutil.move('mmseqs2_all_seqs.fasta', cluster_file)
-            shutil.move('mmseqs2_cluster.tsv', f'{out}/_cluster.tsv')
-            shutil.move('mmseqs2_rep_seq.fasta', f'{out}/_rep_seq.fasta')
+            try:
+                subprocess.run(f'mmseqs easy-cluster {merged_fasta} mmseqs2 {out}'.split(), check=True)
+                shutil.move('mmseqs2_all_seqs.fasta', cluster_file)
+                shutil.move('mmseqs2_cluster.tsv', f'{out}/_cluster.tsv')
+                shutil.move('mmseqs2_rep_seq.fasta', f'{out}/_rep_seq.fasta')
+            except subprocess.CalledProcessError:
+                logging.error(f'Could not cluster merged fasta file: {merged_fasta}')
+                return ''
 
         return cluster_file
 
@@ -486,7 +491,7 @@ def clustering(merged_fasta: str,
         filtered_species_cnt = len(set(sp.id for sp_l in filtered_clusters.values() for sp in sp_l))
         filtered_records_cnt = sum(len(fc) for fc in filtered_clusters.values())
         logging.info(
-            f'Filtered clusters'
+            f'Filtered clusters '
             f'with duplication = {dup}, min_len = {lim}, highest = {highest}: '
             f'clusters {len(filtered_clusters)}/{len(cls)}, '
             f'species {filtered_species_cnt}/{all_species_cnt}, '
@@ -705,6 +710,11 @@ def build_trees(aligned_fastas: List[str], out: str, super_search: bool = False)
             (ml_trees_dir, o_ml),
             (mp_trees_dir, o_mp),
         ]
+        parameters = [
+            (tree_dir, o_dir)
+            for tree_dir, o_dir in parameters
+            if list(Path(tree_dir).glob('*.nwk'))
+        ]
         for t_dir, t_out in parameters:
             Tools.make_phylo_consensus_tree(t_dir, t_out)  # make consensus trees
 
@@ -715,14 +725,21 @@ def build_trees(aligned_fastas: List[str], out: str, super_search: bool = False)
             (ml_trees_dir, o_ml),
             (mp_trees_dir, o_mp),
         ]
-        for t_dir, t_out in parameters:
-            Tools.make_clann_super_tree(t_dir, t_out, ss)  # make super trees
-        # clann sometimes may causes issues in parallel mode
-        # Parallel(n_jobs=args.cpu if args.cpu < len(parameters) else len(parameters))(
-        #     delayed(Tools.make_clann_super_tree)(  # make_clann_super_tree
-        #         t_dir, t_out, ss
-        #     ) for t_dir, t_out in parameters
-        # )
+        parameters = [
+            (tree_dir, o_dir)
+            for tree_dir, o_dir in parameters
+            if list(Path(tree_dir).glob('*.nwk'))
+        ]
+
+        # for t_dir, t_out in parameters:
+        #     Tools.make_clann_super_tree(t_dir, t_out, ss)  # make super trees
+
+        # clann may causes issues in parallel mode
+        Parallel(n_jobs=args.cpu if args.cpu < len(parameters) else len(parameters))(
+            delayed(Tools.make_clann_super_tree)(  # make_clann_super_tree
+                t_dir, t_out, ss
+            ) for t_dir, t_out in parameters
+        )
 
     # if trees already under directory, don't make them again
     if not list(Path(nj_trees_dir).glob('*.nwk')):
