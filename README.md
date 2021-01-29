@@ -3,6 +3,13 @@
 A phylogenetic pipeline for inferring a species/genome tree from a set of
 genomes by clustering, inferring gene families and their trees.
 
+It can be used for inferring all selected species, below are results obtained
+for _Coronaviridae_ viruses family:
+
+![Coronaviridae](demo/ML_supertree_organisms.png)
+
+Report for _Coronaviridae_ project is available [here](docs/report_EN.pdf).
+
 ## Run (Docker)
 
 ```basha
