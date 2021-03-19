@@ -6,10 +6,7 @@ apt-get update && apt-get upgrade -y && apt-get install -y wget git gcc make tar
 # install clann
 git clone https://github.com/ChrisCreevey/clann.git
 cd clann
-# manually apply patches to code (not merged to master yet)
 chmod +x install-sh
-PATCH_LINE="                        while(string[i] != '(' && string[i] != ')' && string[i] != ',' && string[i] != ';' && string[i] != ':')"
-sed -i "3236s/.*/${$PATCH_LINE}/" treecompare2.c
 ./configure
 #make
 # need to install manually due to some errors
