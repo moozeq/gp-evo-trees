@@ -14,7 +14,7 @@ Report for _Coronaviridae_ project is available [here](docs/report_EN.pdf).
 
 ```basha
 # build
-docker build -t evopipe github.com/moozeq/GP_EvoTrees#pipeline
+docker build -t evopipe github.com/moozeq/gp-evo-trees#pipeline
 
 # run for species from file analysis (see example below)
 docker run --name evopipe_file \
